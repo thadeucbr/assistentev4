@@ -21,6 +21,9 @@ function sanitizeMessages(messages) {
     if (msg.role === 'assistant' && msg.name && msg.arguments) {
       return { role: 'assistant', name: msg.name, arguments: msg.arguments };
     }
+    if (msg.role === 'tool' && msg.name && msg.content) {
+      return { role: 'function', name: msg.name, content: msg.content };
+    }
     return { role: msg.role, content: msg.content ?? '' };
   });
 }
@@ -62,51 +65,49 @@ export default async function processMessage(message) {
 async function toolCall(messages, response, tools, from) {
   const newMessages = messages;
   let sendMessageCalled = false;
-  console.log('response', response);
- if(response.message.function_call) {
-  response.message.tool_calls = [
-    {
-      function: {
-        name: response.message.function_call.name,
-        arguments: JSON.parse(response.message.function_call.arguments)
+  if (response.message.function_call) {
+    response.message.tool_calls = [
+      {
+        function: {
+          name: response.message.function_call.name,
+          arguments: JSON.parse(response.message.function_call.arguments)
+        }
       }
-    }
-  ];
- }
+    ];
+  }
   if (response.message.tool_calls && response.message.tool_calls.length > 0) {
     for (const toolCall of response.message.tool_calls) {
       const args = toolCall.function.arguments;
       if (toolCall.function.name === 'generate_image') {
         console.log(args);
         const image = await generateImage({ ...args });
-        newMessages.push({ role: 'tool', content: `Image generated and sent: "${args.prompt}"` });
+        newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Image generated and sent: "${args.prompt}"` });
         await sendImage(from, image, args.prompt);
       } else if (toolCall.function.name === 'send_message') {
-        newMessages.push({ role: 'tool', content: `Mensagem enviada ao usuário: "${args.content}"` });
+        newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Mensagem enviada ao usuário: "${args.content}"` });
         await sendMessage(from, args.content);
         sendMessageCalled = true;
       } else if (toolCall.function.name === 'analyze_image') {
         const analysis = await analyzeImage(args.image, args.prompt);
-        newMessages.push({ role: 'tool', content: analysis });
+        newMessages.push({ name: toolCall.function.name, role: 'tool', content: analysis });
       } else if (toolCall.function.name === 'reminder') {
         if (args.action === 'create') {
           const newReminder = await addReminder(from, args.message, args.scheduledTime);
           scheduleReminder(newReminder);
-          newMessages.push({ role: 'tool', content: `Lembrete criado: ${JSON.stringify(newReminder)}` });
+          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Lembrete criado: ${JSON.stringify(newReminder)}` });
         } else if (args.action === 'list') {
           const reminders = await getReminders(from);
-          newMessages.push({ role: 'tool', content: `Seus lembretes: ${JSON.stringify(reminders)}` });
+          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Seus lembretes: ${JSON.stringify(reminders)}` });
         }
       } else if (toolCall.function.name === 'lottery_check') {
         const result = await lotteryCheck(args.modalidade, args.sorteio);
-        newMessages.push({ role: 'tool', content: JSON.stringify(result) });
+        newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
       }
     }
-    
+
     const newResponse = await chatAi(newMessages);
     newMessages.push(newResponse.message);
-    
-    if (newResponse.message.tool_calls && newResponse.message.tool_calls.length > 0) {
+    if ((newResponse.message.tool_calls && newResponse.message.tool_calls.length > 0) || newResponse.message.function_call) {
       return toolCall(newMessages, newResponse, tools, from);
     }
     if (!sendMessageCalled && newResponse.message.content && newResponse.message.content.length > 0) {
