@@ -1,4 +1,4 @@
-import tools from '../tools.ai.js';
+import tools from './tools.js';
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
@@ -15,7 +15,6 @@ export default async function openAiChat(chatMessages) {
     functions: tools,
     function_call: 'auto'
   };
-
   const response = await fetch(OPENAI_URL, {
     method: 'POST',
     headers: {
@@ -24,7 +23,6 @@ export default async function openAiChat(chatMessages) {
     },
     body: JSON.stringify(body)
   });
-
   if (!response.ok) {
     const errText = await response.text();
     throw new Error(`OpenAI chat failed: ${response.status} ${errText}`);
@@ -32,5 +30,6 @@ export default async function openAiChat(chatMessages) {
 
   const { choices } = await response.json();
   // OpenAI returns an array of choices with a `message` field
-  return choices[0].message;
+  console.log(choices[0]);
+  return choices[0];
 }

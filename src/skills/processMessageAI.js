@@ -16,6 +16,15 @@ const SYSTEM_PROMPT = {
   content: 'Você é um assistente que pode responder perguntas, gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias como Mega-Sena, Quina e Lotofácil. Ao identificar um pedido relacionado a loteria, use a ferramenta "lottery_check".'
 };
 
+function sanitizeMessages(messages) {
+  return messages.map(msg => {
+    if (msg.role === 'assistant' && msg.name && msg.arguments) {
+      return { role: 'assistant', name: msg.name, arguments: msg.arguments };
+    }
+    return { role: msg.role, content: msg.content ?? '' };
+  });
+}
+
 export default async function processMessage(message) {
   const { data } = message;
   const isGroup = groups.includes(data?.chatId);
@@ -37,10 +46,10 @@ export default async function processMessage(message) {
     let response = await chatAi(chatMessages);
 
     messages.push(response.message);
-    if (response.message.tool_calls && response.message.tool_calls.length > 0) {
+    if ((response.message.tool_calls && response.message.tool_calls.length > 0) || response.message.function_call) {
       messages = await toolCall(messages, response, tools, data.from);
     } else {
-      if (response.message.content.length > 0) {
+      if (response?.message?.content?.length > 0) {
         await sendMessage(data.from, response.message.content);
       }
     }
@@ -48,9 +57,22 @@ export default async function processMessage(message) {
   }
 }
 
+
+
 async function toolCall(messages, response, tools, from) {
   const newMessages = messages;
   let sendMessageCalled = false;
+  console.log('response', response);
+ if(response.message.function_call) {
+  response.message.tool_calls = [
+    {
+      function: {
+        name: response.message.function_call.name,
+        arguments: JSON.parse(response.message.function_call.arguments)
+      }
+    }
+  ];
+ }
   if (response.message.tool_calls && response.message.tool_calls.length > 0) {
     for (const toolCall of response.message.tool_calls) {
       const args = toolCall.function.arguments;
