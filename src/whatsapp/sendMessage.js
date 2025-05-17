@@ -20,7 +20,7 @@ const sendMessage = async (to, content) => {
 
   try {
     const response = await axios.post(url, data, options);
-    console.log(response.data);
+    // console.log(response.data);
   } catch (error) {
     console.error('Error:', error);
   }
