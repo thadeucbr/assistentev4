@@ -9,6 +9,7 @@ import { addReminder, getReminders } from '../repository/reminderRepository.js';
 import { scheduleReminder } from './reminder.js';
 import chatAi from '../config/ai/chat.ai.js';
 import tools from '../config/ai/tools.ai.js';
+import browse from '../skills/browse.js'
 const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
 
 const SYSTEM_PROMPT = {
@@ -102,6 +103,10 @@ async function toolCall(messages, response, tools, from) {
       } else if (toolCall.function.name === 'lottery_check') {
         const result = await lotteryCheck(args.modalidade, args.sorteio);
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
+      } else if (toolCall.function.name === 'browse') {
+        // Agora só precisa da URL
+        const result = await browse({ url: args.url });
+        newMessages.push({ name: 'browse', role: 'tool', content: JSON.stringify(result) });
       }
     }
 

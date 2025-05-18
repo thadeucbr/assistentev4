@@ -1,5 +1,16 @@
 export default [
   {
+    name: 'browse',
+    description: 'Realiza navegação web genérica: abre a URL fornecida, aguarda o carregamento do body e retorna o texto completo da página. Para buscas na web, utilize sempre o Bing (https://www.bing.com/search?q=...).',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Endereço da página a ser acessada pelo navegador. Para buscas, use https://www.bing.com/search?q=SEU_TERMO' }
+      },
+      required: ['url']
+    }
+  },
+  {
     name: 'generate_image',
     description: 'Generate an image using the Stable Diffusion API based on a text prompt. The default output size is 512x512 pixels. The prompt MUST be in English.',
     parameters: {
