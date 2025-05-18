@@ -76,5 +76,19 @@ export default [
       },
       required: ['modalidade']
     }
+  },
+  {
+    name: 'curl',
+    description: 'Faz uma requisição HTTP flexível (GET, POST, etc) para uma URL, podendo enviar headers e corpo customizados. Use para acessar APIs públicas ou endpoints que retornam dados estruturados, como JSON.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'URL do endpoint a ser acessado.' },
+        method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], default: 'GET', description: 'Método HTTP.' },
+        headers: { type: 'object', description: 'Headers HTTP opcionais.' },
+        body: { type: 'string', description: 'Corpo da requisição (para POST, PUT, PATCH). Pode ser JSON ou texto.' }
+      },
+      required: ['url']
+    }
   }
 ];

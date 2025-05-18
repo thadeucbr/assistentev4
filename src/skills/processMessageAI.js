@@ -9,7 +9,7 @@ import { addReminder, getReminders } from '../repository/reminderRepository.js';
 import { scheduleReminder } from './reminder.js';
 import chatAi from '../config/ai/chat.ai.js';
 import tools from '../config/ai/tools.ai.js';
-import browse from '../skills/browse.js'
+import curl from './curl.js';
 const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
 
 const SYSTEM_PROMPT = {
@@ -82,8 +82,12 @@ async function toolCall(messages, response, tools, from) {
       if (toolCall.function.name === 'generate_image') {
         console.log(args);
         const image = await generateImage({ ...args });
-        newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Image generated and sent: "${args.prompt}"` });
-        await sendImage(from, image, args.prompt);
+        if (image.error) {
+          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Erro ao gerar imagem: ${image.error}` });
+        } else {
+          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Image generated and sent: "${args.prompt}"` });
+          await sendImage(from, image, args.prompt);
+        }
       } else if (toolCall.function.name === 'send_message') {
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Mensagem enviada ao usuário: "${args.content}"` });
         await sendMessage(from, args.content);
@@ -107,6 +111,9 @@ async function toolCall(messages, response, tools, from) {
         // Agora só precisa da URL
         const result = await browse({ url: args.url });
         newMessages.push({ name: 'browse', role: 'tool', content: JSON.stringify(result) });
+      } else if (toolCall.function.name === 'curl') {
+        const result = await curl(args);
+        newMessages.push({ name: 'curl', role: 'tool', content: JSON.stringify(result) });
       }
     }
 

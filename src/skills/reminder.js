@@ -17,17 +17,21 @@ export async function startReminderScheduler() {
 }
 
 export function scheduleReminder(reminder) {
-  const scheduledTime = parseScheduledTime(reminder.scheduledTime);
-  const delay = scheduledTime - Date.now();
-  const timeoutDelay = delay > 0 ? delay : 0;
+  try {
+    const scheduledTime = parseScheduledTime(reminder.scheduledTime);
+    const delay = scheduledTime - Date.now();
+    const timeoutDelay = delay > 0 ? delay : 0;
 
-  setTimeout(async () => {
-    try {
-      await sendMessage(reminder.userId, `Lembrete: ${reminder.message}`);
-      console.log(`Lembrete disparado para o usuário ${reminder.userId}: ${reminder.message}`);
-      await deleteReminder(reminder._id);
-    } catch (err) {
-      console.error(`Erro ao disparar o lembrete ${reminder._id}: ${err.message}`);
-    }
-  }, timeoutDelay);
+    setTimeout(async () => {
+      try {
+        await sendMessage(reminder.userId, `Lembrete: ${reminder.message}`);
+        console.log(`Lembrete disparado para o usuário ${reminder.userId}: ${reminder.message}`);
+        await deleteReminder(reminder._id);
+      } catch (err) {
+        console.error(`Erro ao disparar o lembrete ${reminder._id}: ${err.message}`);
+      }
+    }, timeoutDelay);
+  } catch (err) {
+    console.error(`Erro ao agendar lembrete: ${err.message}`);
+  }
 }
