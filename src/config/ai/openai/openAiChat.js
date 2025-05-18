@@ -49,7 +49,6 @@ export default async function openAiChat(chatMessages) {
   }
 
   const { choices } = await response.json();
-  // OpenAI returns an array of choices with a `message` field
-  console.log(choices[0]);
+  console.log('OpenAI response:', choices);
   return choices[0];
 }

@@ -26,6 +26,7 @@ async function simulateHuman(page) {
 // Função aprimorada para tentar burlar bloqueios do Google
 export default async function browse({ url }) {
   try {
+    console.log(`Acessando URL: ${url}`);
     if (!url) throw new Error('URL é obrigatória');
     const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
     const page = await browser.newPage();

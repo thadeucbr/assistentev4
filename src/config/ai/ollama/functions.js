@@ -80,5 +80,36 @@ export default [
         required: ['modalidade']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'browse',
+      description: 'Realiza navegação web genérica: abre a URL fornecida, aguarda o carregamento do body e retorna o texto limpo da página. Para buscas na web, utilize sempre o Bing (https://www.bing.com/search?q=...).',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'Endereço da página a ser acessada pelo navegador. Para buscas, use https://www.bing.com/search?q=SEU_TERMO' }
+        },
+        required: ['url']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'curl',
+      description: 'Faz uma requisição HTTP flexível (GET, POST, etc) para uma URL, podendo enviar headers e corpo customizados. Use para acessar APIs públicas ou endpoints que retornam dados estruturados, como JSON. Não retorna HTML ou XML bruto.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'URL do endpoint a ser acessado.' },
+          method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], default: 'GET', description: 'Método HTTP.' },
+          headers: { type: 'object', description: 'Headers HTTP opcionais.' },
+          body: { type: 'string', description: 'Corpo da requisição (para POST, PUT, PATCH). Pode ser JSON ou texto.' }
+        },
+        required: ['url']
+      }
+    }
   }
 ];

@@ -10,24 +10,13 @@ import { scheduleReminder } from './reminder.js';
 import chatAi from '../config/ai/chat.ai.js';
 import tools from '../config/ai/tools.ai.js';
 import curl from './curl.js';
+import browse from './browse.js';
 const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
 
 const SYSTEM_PROMPT = {
   role: 'system',
   content: 'Você é um assistente que pode responder perguntas, gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias como Mega-Sena, Quina e Lotofácil. Ao identificar um pedido relacionado a loteria, use a ferramenta "lottery_check".'
 };
-
-function sanitizeMessages(messages) {
-  return messages.map(msg => {
-    if (msg.role === 'assistant' && msg.name && msg.arguments) {
-      return { role: 'assistant', name: msg.name, arguments: msg.arguments };
-    }
-    if (msg.role === 'tool' && msg.name && msg.content) {
-      return { role: 'function', name: msg.name, content: msg.content };
-    }
-    return { role: msg.role, content: msg.content ?? '' };
-  });
-}
 
 export default async function processMessage(message) {
   const { data } = message;
@@ -61,8 +50,6 @@ export default async function processMessage(message) {
   }
 }
 
-
-
 async function toolCall(messages, response, tools, from) {
   const newMessages = messages;
   let sendMessageCalled = false;
@@ -80,7 +67,6 @@ async function toolCall(messages, response, tools, from) {
     for (const toolCall of response.message.tool_calls) {
       const args = toolCall.function.arguments;
       if (toolCall.function.name === 'generate_image') {
-        console.log(args);
         const image = await generateImage({ ...args });
         if (image.error) {
           newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Erro ao gerar imagem: ${image.error}` });
@@ -108,7 +94,6 @@ async function toolCall(messages, response, tools, from) {
         const result = await lotteryCheck(args.modalidade, args.sorteio);
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
       } else if (toolCall.function.name === 'browse') {
-        // Agora só precisa da URL
         const result = await browse({ url: args.url });
         newMessages.push({ name: 'browse', role: 'tool', content: JSON.stringify(result) });
       } else if (toolCall.function.name === 'curl') {
