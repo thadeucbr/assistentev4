@@ -4,7 +4,8 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "npx nodemon --watch index.js --watch src --ext js,json index.js --verbose"
   },
   "keywords": [],
   "author": "",
@@ -19,5 +20,8 @@
     "puppeteer": "^24.8.2",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
   }
 }

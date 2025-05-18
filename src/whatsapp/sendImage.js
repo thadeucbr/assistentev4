@@ -26,13 +26,13 @@ export default async function sendImage(recipient, base64Image, prompt) {
             }
         };
 
-        const response = await axios.post('http://192.168.1.239:8088/sendImage', payload, {
+        const response = await axios.post(`${process.env.WHATSAPP_URL}/sendImage`, payload, {
             headers: {
                 'Content-Type': 'application/json',
                 'api_key': process.env.WHATSAPP_SECRET,
             }
         });
-
+        console.log("Responase:", response.data);
         return response.data;
     } catch (error) {
         console.error("Error sending image:", error.response ? error.response.data : error.message);
