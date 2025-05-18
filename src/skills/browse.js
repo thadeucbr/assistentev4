@@ -28,6 +28,9 @@ export default async function browse({ url }) {
   try {
     console.log(`Acessando URL: ${url}`);
     if (!url) throw new Error('URL é obrigatória');
+    if (url.includes('google.com')) {
+      throw new Error('Acesso ao Google não permitido, use o bing');
+    }
     const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
     const page = await browser.newPage();
     // User-Agent de navegador real
