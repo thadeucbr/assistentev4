@@ -19,7 +19,6 @@ async function getBase64Image(id) {
       body: JSON.stringify(payload)
     });
     const json = await res.json();
-    console.log(`getBase64Image response: ${JSON.stringify(json)}`);
     if (json.success && json.response) {
       return json.response.replace('data:image/jpeg;base64,', '');
     } else {
@@ -39,7 +38,7 @@ export default async function analyzeImage({ id, prompt = 'What is in this pictu
     const endpoint = process.env.OLLAMA_ANALYZE_URL || 'http://localhost:11434/api/generate';
     const payload = {
       model: process.env.OLLAMA_ANALYZE_MODEL || 'llava',
-      prompt: 'What is in this picture?',
+      prompt: 'Descreva detalhadamente tudo o que está presente nesta imagem, se houver, transcreva todos os textos visíveis na imagem.',
       stream: false,
       images: [base64Image]
     };
