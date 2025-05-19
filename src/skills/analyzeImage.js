@@ -9,7 +9,7 @@ async function getBase64Image(id) {
         message: id
       }
     };
-    const res = await fetch(`http://192.168.1.239:8088/decryptMedia`, {
+    const res = await fetch(`${process.env.WHATSAPP_URL}/decryptMedia`, {
       method: 'POST',
       headers: {
         'api_key': process.env.WHATSAPP_SECRET,
