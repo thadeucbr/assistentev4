@@ -40,7 +40,7 @@ export default async function processMessage(message) {
 
     messages.push(response.message);
     if ((response.message.tool_calls && response.message.tool_calls.length > 0) || response.message.function_call) {
-      messages = await toolCall(messages, response, tools, data.from);
+      messages = await toolCall(messages, response, tools, data.from, data.id);
     } else {
       if (response?.message?.content?.length > 0) {
         await sendMessage(data.from, response.message.content);
@@ -50,7 +50,7 @@ export default async function processMessage(message) {
   }
 }
 
-async function toolCall(messages, response, tools, from) {
+async function toolCall(messages, response, tools, from, id) {
   const newMessages = messages;
   let sendMessageCalled = false;
   if (response.message.function_call) {
@@ -79,7 +79,7 @@ async function toolCall(messages, response, tools, from) {
         await sendMessage(from, args.content);
         sendMessageCalled = true;
       } else if (toolCall.function.name === 'analyze_image') {
-        const analysis = await analyzeImage(args.image, args.prompt);
+        const analysis = await analyzeImage({ id, prompt: args.prompt });
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: analysis });
       } else if (toolCall.function.name === 'reminder') {
         if (args.action === 'create') {
@@ -105,7 +105,7 @@ async function toolCall(messages, response, tools, from) {
     const newResponse = await chatAi(newMessages);
     newMessages.push(newResponse.message);
     if ((newResponse.message.tool_calls && newResponse.message.tool_calls.length > 0) || newResponse.message.function_call) {
-      return toolCall(newMessages, newResponse, tools, from);
+      return toolCall(newMessages, newResponse, tools, from, id);
     }
     if (!sendMessageCalled && newResponse.message.content && newResponse.message.content.length > 0) {
       await sendMessage(from, newResponse.message.content);

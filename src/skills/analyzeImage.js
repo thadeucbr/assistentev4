@@ -1,11 +1,45 @@
-export default async function analyzeImage(base64Image, prompt = 'What is in this picture?') {
+async function getBase64Image(id) {
+  if (!id) {
+    console.error('getBase64Image: id is required');
+    return false;
+  }
+  try {
+    const payload = {
+      args: {
+        message: id
+      }
+    };
+    const res = await fetch(`http://192.168.1.239:8088/decryptMedia`, {
+      method: 'POST',
+      headers: {
+        'api_key': process.env.WHATSAPP_SECRET,
+        'Content-Type': 'application/json',
+        'accept': '*/*'
+      },
+      body: JSON.stringify(payload)
+    });
+    const json = await res.json();
+    console.log(`getBase64Image response: ${JSON.stringify(json)}`);
+    if (json.success && json.response) {
+      return json.response.replace('data:image/jpeg;base64,', '');
+    } else {
+      console.error('getBase64Image error:', json.error || json);
+      return false;
+    }
+  } catch (err) {
+    console.error('getBase64Image exception:', err);
+    return false;
+  }
+}
+export default async function analyzeImage({ id, prompt = 'What is in this picture?' }) {
   try {
     console.log(`Initializing analyzeImage with prompt: ${prompt}`);
-    console.log(`Base64 image: ${base64Image}`);
+    console.log(`Base64 image: ${id}`);
+    const base64Image = await getBase64Image(id);    
     const endpoint = process.env.OLLAMA_ANALYZE_URL || 'http://localhost:11434/api/generate';
     const payload = {
       model: process.env.OLLAMA_ANALYZE_MODEL || 'llava',
-      prompt: prompt,
+      prompt: 'What is in this picture?',
       stream: false,
       images: [base64Image]
     };
