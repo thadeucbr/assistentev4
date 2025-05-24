@@ -4,7 +4,7 @@ import processMessage from './src/skills/processMessageAI.js';
 import { startReminderScheduler } from './src/skills/reminder.js';
 
 const PORT = process.env.EXPRESS_PORT || 3000;
-const BLACK_LIST = JSON.parse(process.env.WHATSAPP_BLACK_LIST) || [];
+const BLACK_LIST = JSON.parse(process.env.WHATSAPP_BLACK_LIST || '[]');
 const app = express();
 app.use(json());
 

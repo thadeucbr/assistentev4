@@ -67,6 +67,7 @@ async function toolCall(messages, response, tools, from, id) {
     for (const toolCall of response.message.tool_calls) {
       const args = toolCall.function.arguments;
       if (toolCall.function.name === 'generate_image') {
+        console.log(args)
         const image = await generateImage({ ...args });
         if (image.error) {
           newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Erro ao gerar imagem: ${image.error}` });

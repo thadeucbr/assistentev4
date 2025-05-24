@@ -7,7 +7,6 @@ const sd_password = env.SDAPI_PWD;
 export default async function generateImage({ prompt, seed = -1, subseed = -1, subseed_strength = 0, steps = 30, width = 512, height = 512, pag_scale = 7.5, negative_prompt = 'painting, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, deformed, ugly, blurry, bad anatomy, bad proportions, extra limbs, cloned face, skinny, glitchy, double torso, extra arms, extra hands, mangled fingers, missing lips, ugly face, distorted face, extra legs' }) {
   try {
     const method = 'POST';
-    console.log(negative_prompt)
     const headers = new Headers();
     const body = JSON.stringify({
       "prompt": prompt,
@@ -146,8 +145,10 @@ export default async function generateImage({ prompt, seed = -1, subseed = -1, s
     }
 
     const json = await res.json();
+    console.log(json)
     return json.images[0];
   } catch (err) {
+    console.log(err.message)
     return { error: err.message || 'Erro desconhecido', stack: err.stack || undefined };
   }
 }
