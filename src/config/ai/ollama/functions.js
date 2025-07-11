@@ -85,7 +85,7 @@ export default [
     type: 'function',
     function: {
       name: 'browse',
-      description: 'Realiza navegação web genérica: abre a URL fornecida, aguarda o carregamento do body e retorna o texto limpo da página. Para buscas na web, utilize sempre o Bing (https://www.bing.com/search?q=...).',
+      description: 'Realiza navegação web genérica: abre a URL fornecida, aguarda o carregamento do body e retorna o texto completo da página. Para buscas na web, utilize sempre o Bing (https://www.bing.com/search?q=...).',
       parameters: {
         type: 'object',
         properties: {
