@@ -80,7 +80,7 @@ Se não tiver certeza de como usar uma função, explique o motivo e peça mais 
     messages.push({ role: 'user', content: userContent });
 
     const chatMessages = [dynamicPrompt, ...messages];
-    let response = await chatAi(chatMessages);
+    let response = await chatAi(chatMessages, tools);
 
     messages.push(response.message);
     if ((response.message.tool_calls && response.message.tool_calls.length > 0) || response.message.function_call) {
