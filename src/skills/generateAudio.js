@@ -14,7 +14,7 @@ const execPromise = util.promisify(exec);
 const PIPER_PATH = path.join(process.cwd(), 'piper', 'piper.exe');
 const MODEL_PATH = path.join(process.cwd(), 'piper', 'pt_BR-cadu-medium.onnx');
 const TEMP_AUDIO_DIR = path.join(process.cwd(), 'temp_audio');
-const SEND_PTT_ENDPOINT = 'http://192.168.1.239:8088/sendPtt';
+
 
 /**
  * Garante que o diretório de áudio temporário exista.
@@ -111,7 +111,7 @@ async function generateAudioWithOpenAI(textToSpeak) {
  * Função principal que gera e envia o áudio, escolhendo o provedor
  * com base na variável de ambiente TTS_PROVIDER.
  */
-export default async function generateAndSendAudio(textToSpeak, recipientId, quotedMsgId) {
+export default async function generateAudio(textToSpeak) {
   await ensureTempDirExists();
 
   try {
@@ -131,45 +131,11 @@ export default async function generateAndSendAudio(textToSpeak, recipientId, quo
         break;
     }
 
-    console.log(`Áudio gerado com sucesso usando o provedor: ${provider}. Enviando...`);
-
-    // Converte o buffer final para Base64 e monta o payload
-    const audioDataUri = `data:audio/ogg;base64,${audioBuffer.toString('base64')}`;
-
-    const payload = {
-      args: {
-        to: recipientId,
-        file: audioDataUri,
-        quotedMsgId: quotedMsgId || undefined,
-      },
-    };
-
-    // Envia a requisição para a API OpenWA
-    const fetchResponse = await fetch(SEND_PTT_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Accept': '*/*',
-        'Content-Type': 'application/json',
-        'api_key': process.env.WHATSAPP_SECRET,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!fetchResponse.ok) {
-      const errorData = await fetchResponse.text();
-      throw new Error(`Erro HTTP ao enviar áudio: ${fetchResponse.status} - ${errorData}`);
-    }
-
-    const responseData = await fetchResponse.json();
-    if (responseData.success === false) {
-      throw new Error(`A API OpenWA retornou um erro: ${responseData.error?.message || JSON.stringify(responseData.error)}`);
-    }
-
-    console.log('Mensagem de voz enviada com sucesso!');
-    return { success: true, message: 'Áudio enviado com sucesso.' };
+    console.log(`Áudio gerado com sucesso usando o provedor: ${provider}.`);
+    return { success: true, audioBuffer };
 
   } catch (error) {
-    console.error('Ocorreu um erro geral no processo de envio de áudio:', error.message);
+    console.error('Ocorreu um erro geral no processo de geração de áudio:', error.message);
     return { success: false, error: error.message };
   }
 }
