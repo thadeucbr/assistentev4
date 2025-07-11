@@ -5,11 +5,13 @@ import analyzeImage from './analyzeImage.js';
 import ollama from 'ollama';
 import lotteryCheck from './lotteryCheck.js';
 import { getUserContext, updateUserContext } from '../repository/contextRepository.js';
+import { getUserProfile, updateUserProfile } from '../repository/userProfileRepository.js';
+import analyzeSentiment from './analyzeSentiment.js';
 import { addReminder, getReminders } from '../repository/reminderRepository.js';
 import { scheduleReminder } from './reminder.js';
 import chatAi from '../config/ai/chat.ai.js';
 import tools from '../config/ai/tools.ai.js';
-import curl from './curl.js';
+import updateUserProfileSummary from './updateUserProfileSummary.js';
 import browse from './browse.js';
 import generateAudio from './generateAudio.js';
 import sendPtt from '../whatsapp/sendPtt.js';
@@ -34,10 +36,34 @@ export default async function processMessage(message) {
       .trim();
     const userId = data.from.replace('@c.us', '');
     let { messages } = await getUserContext(userId);
+    const userProfile = await getUserProfile(userId);
+
+    // Análise de sentimento da mensagem atual
+    const currentSentiment = await analyzeSentiment(userContent);
+
+    // Atualiza o perfil do usuário com o novo sentimento
+    const updatedProfile = {
+      ...userProfile,
+      sentiment: {
+        average: currentSentiment, // Simplificado por enquanto
+        trend: 'stable' // Simplificado por enquanto
+      }
+    };
+    await updateUserProfile(userId, updatedProfile);
+
+    // Constrói o prompt dinâmico
+    const dynamicPrompt = {
+      role: 'system',
+      content: `Você é um assistente que pode responder perguntas, gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias como Mega-Sena, Quina e Lotofácil.\n\nIMPORTANTE: Ao usar ferramentas (functions/tools), siga exatamente as instruções de uso de cada função, conforme descrito no campo 'description' de cada uma.\n\nSe não tiver certeza de como usar uma função, explique o motivo e peça mais informações. Nunca ignore as instruções do campo 'description' das funções.`
+    };
+
+    if (userProfile) {
+      dynamicPrompt.content += `\n\n--- Sobre o usuário ---\n${userProfile.summary || ''}\nSentimento: ${userProfile.sentiment?.average || 'neutro'}`;
+    }
+
     messages.push({ role: 'user', content: userContent });
 
-
-    const chatMessages = [SYSTEM_PROMPT, ...messages];
+    const chatMessages = [dynamicPrompt, ...messages];
     let response = await chatAi(chatMessages);
 
     messages.push(response.message);
@@ -49,6 +75,7 @@ export default async function processMessage(message) {
       }
     }
     await updateUserContext(userId, { messages });
+    await updateUserProfileSummary(userId, messages);
   }
 }
 
