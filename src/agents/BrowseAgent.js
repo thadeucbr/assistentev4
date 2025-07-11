@@ -15,34 +15,54 @@ Sempre que usar uma ferramenta, você deve adicionar o resultado ao histórico d
 };
 
 export async function execute(userQuery) {
+  console.log(`BrowseAgent: Starting execution for query: ${userQuery}`);
   let messages = [SYSTEM_PROMPT, { role: 'user', content: userQuery }];
-  let response = await chatAi(messages, tools);
+  let response;
+  let maxIterations = 5; // Prevent infinite loops
+  let iterationCount = 0;
 
-  // Loop para permitir que o agente tome múltiplas ações
-  while (response.message.tool_calls && response.message.tool_calls.length > 0) {
-    for (const toolCall of response.message.tool_calls) {
-      const args = toolCall.function.arguments;
-      let toolResult;
-
-      if (toolCall.function.name === 'browse') {
-        toolResult = await browse({ url: args.url });
-        if (toolResult.error && toolResult.error.includes('net::ERR_NAME_NOT_RESOLVED')) {
-          messages.push({ name: toolCall.function.name, role: 'tool', content: `Browse failed with name resolution error. Attempting web search.` });
-          // Fallback to web search
-          const webSearchResult = await webSearch({ query: userQuery });
-          messages.push({ name: 'web_search', role: 'tool', content: JSON.stringify(webSearchResult) });
-          response = await chatAi(messages, tools);
-          continue; // Continue to the next iteration of the while loop
-        }
-      } else if (toolCall.function.name === 'web_search') {
-        toolResult = await webSearch({ query: args.query });
-      } else {
-        toolResult = { error: `Unknown tool: ${toolCall.function.name}` };
-      }
-      messages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(toolResult) });
-    }
+  while (iterationCount < maxIterations) {
+    iterationCount++;
+    console.log(`BrowseAgent: Iteration ${iterationCount}. Sending messages to chatAi:`, messages);
     response = await chatAi(messages, tools);
+    console.log(`BrowseAgent: Received response from chatAi:`, response.message);
+
+    if (response.message.tool_calls && response.message.tool_calls.length > 0) {
+      console.log(`BrowseAgent: Tool calls identified:`, response.message.tool_calls);
+      for (const toolCall of response.message.tool_calls) {
+        const args = toolCall.function.arguments;
+        let toolResult;
+        console.log(`BrowseAgent: Executing tool: ${toolCall.function.name} with args:`, args);
+
+        if (toolCall.function.name === 'browse') {
+          toolResult = await browse({ url: args.url });
+          console.log(`BrowseAgent: Browse tool result:`, toolResult);
+          if (toolResult.error && toolResult.error.includes('net::ERR_NAME_NOT_RESOLVED')) {
+            console.warn(`BrowseAgent: Browse failed with name resolution error. Attempting web search as fallback.`);
+            messages.push({ name: toolCall.function.name, role: 'tool', content: `Browse failed with name resolution error. Attempting web search.` });
+            // Fallback to web search
+            const webSearchResult = await webSearch({ query: userQuery });
+            console.log(`BrowseAgent: Web search fallback result:`, webSearchResult);
+            messages.push({ name: 'web_search', role: 'tool', content: JSON.stringify(webSearchResult) });
+            // Continue the loop to re-prompt the AI with the new search results
+            continue; 
+          }
+        } else if (toolCall.function.name === 'web_search') {
+          toolResult = await webSearch({ query: args.query });
+          console.log(`BrowseAgent: Web search tool result:`, toolResult);
+        } else {
+          toolResult = { error: `Unknown tool: ${toolCall.function.name}` };
+          console.error(`BrowseAgent: Unknown tool encountered: ${toolCall.function.name}`);
+        }
+        messages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(toolResult) });
+      }
+    } else {
+      console.log(`BrowseAgent: No more tool calls. Breaking loop.`);
+      // If no tool calls, the agent has a final response
+      break;
+    }
   }
 
+  console.log(`BrowseAgent: Final response:`, response.message.content);
   return response.message.content; // Return the final content from the agent
 }
