@@ -43,6 +43,14 @@ export async function execute(userQuery) {
   console.log(`BrowseAgent: Starting execution for query: ${userQuery}`);
   let messages = [SYSTEM_PROMPT, { role: 'user', content: userQuery }];
   let response;
+
+  // If using OpenAI, let OpenAI's native browsing handle it
+  if (process.env.AI_PROVIDER === 'openai') {
+    console.log('BrowseAgent: Using OpenAI provider, delegating browsing to OpenAI.');
+    response = await chatAi(messages, tools); // Pass all tools to OpenAI
+    return response.message.content;
+  }
+
   let maxIterations = 5; // Prevent infinite loops
   let iterationCount = 0;
 
