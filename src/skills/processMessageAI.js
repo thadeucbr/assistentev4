@@ -11,6 +11,7 @@ import chatAi from '../config/ai/chat.ai.js';
 import tools from '../config/ai/tools.ai.js';
 import curl from './curl.js';
 import browse from './browse.js';
+import generateAndSendAudio from './generateAudio.js';
 const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
 
 const SYSTEM_PROMPT = {
@@ -100,7 +101,15 @@ async function toolCall(messages, response, tools, from, id) {
       } else if (toolCall.function.name === 'curl') {
         const result = await curl(args);
         newMessages.push({ name: 'curl', role: 'tool', content: JSON.stringify(result) });
-      }
+      } else if (toolCall.function.name === 'generate_audio') {
+        console.log('Generating audio with args:', args);
+        const audioResult = await generateAndSendAudio(args.textToSpeak, from, id);
+        if (audioResult.success) {
+          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Áudio gerado e enviado: "${args.textToSpeak}"` });
+        } else {
+          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Erro ao gerar áudio: ${audioResult.error}` });
+        }
+      } 
     }
 
     const newResponse = await chatAi(newMessages);

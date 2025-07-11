@@ -80,5 +80,22 @@ export default [
             required: ['modalidade']
           }
         }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'generate_audio',
+          description: 'Gera um áudio a partir de um texto e envia para o usuário. Use para responder o usuário com áudio.',
+          parameters: {
+            type: 'object',
+            properties: {
+              textToSpeak: {
+                type: 'string',
+                description: 'O texto que será transformado em áudio.'
+              }
+            },
+            required: ['textToSpeak']
+          }
+        }
       }
     ];
