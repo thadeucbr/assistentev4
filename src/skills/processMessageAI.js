@@ -13,6 +13,7 @@ import chatAi from '../config/ai/chat.ai.js';
 import tools from '../config/ai/tools.ai.js';
 import updateUserProfileSummary from './updateUserProfileSummary.js';
 import webSearch from './webSearch.js';
+import browse from './browse.js';
 import generateAudio from './generateAudio.js';
 import sendPtt from '../whatsapp/sendPtt.js';
 const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
