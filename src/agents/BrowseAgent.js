@@ -71,9 +71,31 @@ export async function execute(userQuery) {
             messages.push({ name: 'web_search', role: 'tool', content: JSON.stringify(webSearchResult) });
             // Continue the loop to re-prompt the AI with the new search results
             continue; 
+          } else if (toolResult.error) {
+            console.warn(`BrowseAgent: Browse failed for ${args.url} with error: ${toolResult.error}. Trying next URL if available.`);
+            messages.push({ name: toolCall.function.name, role: 'tool', content: `Browse failed for ${args.url}: ${toolResult.error}` });
+            continue; // Try next tool call or break if no more browse calls
           }
         } else if (toolCall.function.name === 'web_search') {
           toolResult = await webSearch({ query: args.query });
+          console.log(`BrowseAgent: Web search tool result:`, toolResult);
+          if (toolResult.results && toolResult.results.length > 0) {
+            // Try to browse the top relevant results
+            for (const result of toolResult.results.slice(0, 3)) { // Limit to top 3 results
+              if (result.link && !result.link.includes('bing.com') && !result.link.includes('google.com') && !result.link.includes('duckduckgo.com')) {
+                console.log(`BrowseAgent: Attempting to browse search result: ${result.link}`);
+                const browseAttempt = await browse({ url: result.link });
+                console.log(`BrowseAgent: Browse attempt result:`, browseAttempt);
+                if (!browseAttempt.error) {
+                  toolResult.body = browseAttempt.body; // Use the successful browse result
+                  toolResult.url = browseAttempt.url;
+                  break; // Stop after first successful browse
+                } else {
+                  console.warn(`BrowseAgent: Failed to browse search result ${result.link}: ${browseAttempt.error}`);
+                }
+              }
+            }
+          }
         } else {
           toolResult = { error: `Unknown tool: ${toolCall.function.name}` };
           console.error(`BrowseAgent: Unknown tool encountered: ${toolCall.function.name}`);
