@@ -31,7 +31,7 @@ Você tem acesso a agentes especializados para realizar tarefas específicas. Us
 
 Ao analisar informações, especialmente de fontes da web, priorize dados recentes. Se a informação contiver datas, mencione a data da informação ao usuário para indicar sua relevância. Se a informação estiver desatualizada, informe o usuário sobre isso.
 
-Sempre que usar um agente, você deve passar a consulta completa do usuário ou uma descrição clara da tarefa para o parâmetro 'query' do agente.`
+Sempre que usar um agente, você deve passar a consulta completa do usuário ou uma descrição clara da tarefa para o parâmetro 'query' do agente. Após a execução de um agente, você DEVE analisar o conteúdo retornado pelo agente (que estará no campo 'content' da mensagem de 'role: tool') e usar essa informação para formular sua resposta ao usuário. Não ignore o conteúdo retornado pelos agentes.`
 };
 
 export default async function processMessage(message) {
