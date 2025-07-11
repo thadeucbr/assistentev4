@@ -1,16 +1,63 @@
+import puppeteer from 'puppeteer-core';
 
-import { google_web_search } from 'google-search'; // This is a placeholder for the actual tool call
+// Helper para encontrar o caminho do executável do Chrome
+function getChromeExecutablePath() {
+  // Adapte este caminho se o seu Chrome estiver instalado em um local diferente
+  if (process.platform === 'win32') {
+    return 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+  } else if (process.platform === 'darwin') {
+    return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  } else {
+    return '/usr/bin/google-chrome'; // Caminho comum para Linux
+  }
+}
 
 export default async function webSearch({ query }) {
-  console.log(`Performing web search for: "${query}"`);
+  console.log(`Performing web search on Bing for: "${query}"`);
+  let browser = null;
   try {
-    // In a real scenario, this would call the Gemini built-in google_web_search tool.
-    // As I cannot call it directly from file code, I will simulate the call.
-    // This placeholder assumes the actual tool is available in the execution environment.
-    const searchResults = await google_web_search({ query });
-    return searchResults;
+    browser = await puppeteer.launch({
+      executablePath: getChromeExecutablePath(),
+      headless: true, // Roda sem abrir uma janela do navegador
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+    const page = await browser.newPage();
+
+    // Constrói a URL de busca do Bing
+    const searchUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}`;
+    await page.goto(searchUrl);
+
+    // Espera os resultados da busca do Bing serem carregados
+    await page.waitForSelector('#b_results');
+
+    // Extrai os resultados da página do Bing
+    // Estes seletores são específicos para o layout do Bing
+    const searchResults = await page.evaluate(() => {
+      const results = [];
+      document.querySelectorAll('li.b_algo').forEach(result => {
+        const titleElement = result.querySelector('h2 a');
+        const linkElement = result.querySelector('h2 a');
+        const snippetElement = result.querySelector('.b_caption p');
+
+        if (titleElement && linkElement && snippetElement) {
+          results.push({
+            title: titleElement.innerText,
+            link: linkElement.href,
+            snippet: snippetElement.innerText
+          });
+        }
+      });
+      return results.slice(0, 5); // Retorna os 5 primeiros resultados
+    });
+
+    return { results: searchResults };
+
   } catch (error) {
-    console.error('Error during web search:', error);
+    console.error('Error during Bing web search:', error);
     return { error: 'Failed to perform web search.', details: error.message };
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
   }
 }

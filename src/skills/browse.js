@@ -2,12 +2,24 @@ import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 puppeteer.use(StealthPlugin());
 
+// Helper para encontrar o caminho do executável do Chrome
+function getChromeExecutablePath() {
+  // Adapte este caminho se o seu Chrome estiver instalado em um local diferente
+  if (process.platform === 'win32') {
+    return 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+  } else if (process.platform === 'darwin') {
+    return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  } else {
+    return '/usr/bin/google-chrome'; // Caminho comum para Linux
+  }
+}
+
 function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 async function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms);
 }
 
 async function simulateHuman(page) {
@@ -31,7 +43,7 @@ export default async function browse({ url }) {
     if (url.includes('google.com')) {
       throw new Error('Acesso ao Google não permitido, use o bing');
     }
-    const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
+    const browser = await puppeteer.launch({ executablePath: getChromeExecutablePath(), headless: true, args: ['--no-sandbox'] });
     const page = await browser.newPage();
     // User-Agent de navegador real
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36');
