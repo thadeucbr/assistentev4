@@ -23,7 +23,7 @@ export async function execute(userQuery, from, id) {
 
       if (toolCall.function.name === 'audio_generation_agent') {
         console.log('Generating audio with args:', args);
-        const audioResult = await generateAudio(args.text);
+        const audioResult = await generateAudio(args.query);
         if (audioResult.success) {
           await sendPtt(from, audioResult.audioBuffer, id);
           return `Áudio gerado e enviado: "${args.text}"`;
