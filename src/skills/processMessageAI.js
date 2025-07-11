@@ -93,6 +93,8 @@ Se não tiver certeza de como usar uma função, explique o motivo e peça mais 
 
 async function toolCall(messages, response, tools, from, id, userContent) {
   const newMessages = messages;
+  let directCommunicationOccurred = false; // Flag to track if a direct communication tool was used
+
   if (response.message.function_call) {
     response.message.tool_calls = [
       {
@@ -112,7 +114,7 @@ async function toolCall(messages, response, tools, from, id, userContent) {
       } else if (toolCall.function.name === 'send_message') {
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Mensagem enviada ao usuário: "${args.content}"` });
         await sendMessage(from, args.content);
-        return newMessages; // Return immediately after sending message
+        directCommunicationOccurred = true; // Set flag
       } else if (toolCall.function.name === 'image_analysis_agent') {
         const result = await analyzeImageAgentExecute(data.body, args.prompt);
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: result });
@@ -128,22 +130,25 @@ async function toolCall(messages, response, tools, from, id, userContent) {
       } else if (toolCall.function.name === 'audio_generation_agent') {
         const result = await generateAudioAgentExecute(args.query, from, id);
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: result });
-        return newMessages; // Return immediately after audio generation
+        directCommunicationOccurred = true; // Set flag
+      }
     }
 
-    const newResponse = await chatAi(newMessages);
-    newMessages.push(newResponse.message);
-    if ((newResponse.message.tool_calls && newResponse.message.tool_calls.length > 0) || newResponse.message.function_call) {
-      return toolCall(newMessages, newResponse, tools, from, id);
-    }
+    // Only make a new chatAi call if no direct communication occurred in this turn
+    if (!directCommunicationOccurred) {
+      const newResponse = await chatAi(newMessages);
+      newMessages.push(newResponse.message);
+      if ((newResponse.message.tool_calls && newResponse.message.tool_calls.length > 0) || newResponse.message.function_call) {
+        return toolCall(newMessages, newResponse, tools, from, id);
+      }
 
-    // Fallback for when the model forgets to use the send_message tool
-    if (newResponse.message.content && newResponse.message.content.trim().length > 0) {
-      await sendMessage(from, newResponse.message.content);
+      // Fallback for when the model forgets to use the send_message tool
+      if (newResponse.message.content && newResponse.message.content.trim().length > 0) {
+        await sendMessage(from, newResponse.message.content);
+      }
     }
 
     return newMessages;
   }
   return messages;
-}
 }
