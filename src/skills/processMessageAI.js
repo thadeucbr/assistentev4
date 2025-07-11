@@ -19,7 +19,7 @@ const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
 
 const SYSTEM_PROMPT = {
   role: 'system',
-  content: `Você é um assistente que pode responder perguntas, gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias como Mega-Sena, Quina e Lotofácil.\n\nIMPORTANTE: Ao usar ferramentas (functions/tools), siga exatamente as instruções de uso de cada função, conforme descrito no campo 'description' de cada uma.\n\nSe não tiver certeza de como usar uma função, explique o motivo e peça mais informações. Nunca ignore as instruções do campo 'description' das funções.`
+  content: `Você é um assistente de IA. Para se comunicar com o usuário, você DEVE OBRIGATORIAMENTE usar a função 'send_message'. NUNCA responda diretamente com texto no campo 'content'. Todo o texto para o usuário final deve ser encapsulado na função 'send_message'. Você pode chamar a função 'send_message' várias vezes em sequência para quebrar suas respostas em mensagens menores e mais dinâmicas. Além de se comunicar, você pode usar outras ferramentas para gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias.`
 };
 
 export default async function processMessage(message) {
@@ -69,10 +69,6 @@ export default async function processMessage(message) {
     messages.push(response.message);
     if ((response.message.tool_calls && response.message.tool_calls.length > 0) || response.message.function_call) {
       messages = await toolCall(messages, response, tools, data.from, data.id);
-    } else {
-      if (response?.message?.content?.length > 0) {
-        await sendMessage(data.from, response.message.content);
-      }
     }
     await updateUserContext(userId, { messages });
     await updateUserProfileSummary(userId, messages);
@@ -81,7 +77,6 @@ export default async function processMessage(message) {
 
 async function toolCall(messages, response, tools, from, id) {
   const newMessages = messages;
-  let sendMessageCalled = false;
   if (response.message.function_call) {
     response.message.tool_calls = [
       {
@@ -107,7 +102,6 @@ async function toolCall(messages, response, tools, from, id) {
       } else if (toolCall.function.name === 'send_message') {
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Mensagem enviada ao usuário: "${args.content}"` });
         await sendMessage(from, args.content);
-        sendMessageCalled = true;
       } else if (toolCall.function.name === 'analyze_image') {
         const analysis = await analyzeImage({ id, prompt: args.prompt });
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: analysis });
@@ -146,14 +140,7 @@ async function toolCall(messages, response, tools, from, id) {
     if ((newResponse.message.tool_calls && newResponse.message.tool_calls.length > 0) || newResponse.message.function_call) {
       return toolCall(newMessages, newResponse, tools, from, id);
     }
-    if (!sendMessageCalled && newResponse.message.content && newResponse.message.content.length > 0) {
-      await sendMessage(from, newResponse.message.content);
-    }
     return newMessages;
-  }
-  if (!sendMessageCalled && response.message.content && response.message.content.length > 0) {
-    await sendMessage(from, response.message.content);
-    return messages;
   }
   return messages;
 }
