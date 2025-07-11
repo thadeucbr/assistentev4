@@ -101,6 +101,20 @@ export default [
       {
         type: 'function',
         function: {
+          name: 'browse',
+          description: 'Extracts the content from a given URL.',
+          parameters: {
+            type: 'object',
+            properties: {
+              url: { type: 'string', description: 'The URL to browse.' }
+            },
+            required: ['url']
+          }
+        }
+      },
+      {
+        type: 'function',
+        function: {
           name: 'web_search',
           description: 'Performs a web search to find information or URLs. Use this when you need to find a website or information you don't know.',
           parameters: {
