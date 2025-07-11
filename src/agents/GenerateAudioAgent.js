@@ -25,12 +25,12 @@ export async function execute(userQuery, from, id) {
         const audioResult = await generateAudio(args.query);
         if (audioResult.success) {
           await sendPtt(from, audioResult.audioBuffer, id);
-          return `Áudio gerado e enviado: "${args.textToSpeak}"`;
+          return `Áudio gerado e enviado: "${args.query}"`;
         } else {
           return `Erro ao gerar áudio: ${audioResult.error}`;
-        }
       }
     }
   }
   return `Não foi possível gerar o áudio com a sua solicitação. Por favor, tente novamente com um prompt mais claro.`;
+}
 }
