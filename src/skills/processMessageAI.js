@@ -25,6 +25,8 @@ Para buscar informações na web, siga este processo em duas etapas:
 1. **Descubra:** Use a função 'web_search' com uma query de busca (ex: "melhores restaurantes em São Paulo") para encontrar URLs relevantes.
 2. **Extraia:** Analise os resultados da busca, escolha a URL mais promissora e use a função 'browse' para extrair as informações daquela página específica. **NUNCA use 'browse' em URLs de motores de busca (Bing, Google, etc.).**
 
+Ao analisar informações, especialmente de fontes da web, priorize dados recentes. Se a informação contiver datas, mencione a data da informação ao usuário para indicar sua relevância. Se a informação estiver desatualizada, informe o usuário sobre isso.
+
 Além disso, você pode usar outras ferramentas para gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias.`
 };
 
@@ -123,10 +125,10 @@ async function toolCall(messages, response, tools, from, id) {
       } else if (toolCall.function.name === 'lottery_check') {
         const result = await lotteryCheck(args.modalidade, args.sorteio);
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
+      } else if (toolCall.function.name === 'browse') {
+        const result = await browse({ url: args.url });
+        newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
       } else if (toolCall.function.name === 'web_search') {
-        const result = await webSearch({ query: args.query });
-        newMessages.push({ name: 'web_search', role: 'tool', content: JSON.stringify(result) });
-      } else if (toolCall.function.name === 'curl') {
         const result = await curl(args);
         newMessages.push({ name: 'curl', role: 'tool', content: JSON.stringify(result) });
       } else if (toolCall.function.name === 'generate_audio') {
