@@ -2,15 +2,24 @@ import { exec } from 'child_process';
 import util from 'util';
 import path from 'path';
 import fs from 'fs/promises';
+import ffmpeg from 'fluent-ffmpeg';
+import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
+
+// Configura o fluent-ffmpeg para usar o executável que o installer baixou
+ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 const execPromise = util.promisify(exec);
 
+// --- Constantes de Configuração ---
 const PIPER_PATH = path.join(process.cwd(), 'piper', 'piper.exe');
 const MODEL_PATH = path.join(process.cwd(), 'piper', 'pt_BR-cadu-medium.onnx');
-// const MODEL_CONFIG_PATH = path.join(process.cwd(), 'piper', 'pt_BR-cadu-medium.onnx.json'); // Not directly used in command but good to note
 const TEMP_AUDIO_DIR = path.join(process.cwd(), 'temp_audio');
-const SEND_FILE_ENDPOINT = 'http://192.168.1.239:8088/sendFile'; // Changed from sendAudio
+// O endpoint correto para PTT, de acordo com o Swagger
+const SEND_PTT_ENDPOINT = 'http://192.168.1.239:8088/sendPtt';
 
+/**
+ * Garante que o diretório de áudio temporário exista.
+ */
 async function ensureTempDirExists() {
   try {
     await fs.access(TEMP_AUDIO_DIR);
@@ -23,51 +32,65 @@ async function ensureTempDirExists() {
   }
 }
 
+/**
+ * Gera um áudio a partir de um texto, converte para o formato OGG/Opus e envia como
+ * uma mensagem de voz (PTT) para a API OpenWA.
+ * @param {string} textToSpeak O texto a ser transformado em áudio.
+ * @param {string} recipientId O ID do destinatário (ex: 5511999999999@c.us).
+ * @param {string|undefined} quotedMsgId O ID da mensagem a ser respondida (opcional).
+ */
 export default async function generateAndSendAudio(textToSpeak, recipientId, quotedMsgId) {
   await ensureTempDirExists();
-  const outputFileName = `audio_${Date.now()}_${Math.random().toString(36).substring(7)}.wav`;
-  const outputFilePath = path.join(TEMP_AUDIO_DIR, outputFileName);
-  const absoluteOutputFilePath = path.resolve(outputFilePath); // Ensure absolute path for piper
+  
+  const baseFileName = `audio_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  const wavFilePath = path.resolve(path.join(TEMP_AUDIO_DIR, `${baseFileName}.wav`));
+  const oggFilePath = path.resolve(path.join(TEMP_AUDIO_DIR, `${baseFileName}.ogg`));
 
-  // It's safer to pass text via stdin to avoid command line length limits and special character issues.
-  const command = `echo "${textToSpeak.replace(/"/g, '\\\\"')}" | "${PIPER_PATH}" --model "${MODEL_PATH}" --output_file "${absoluteOutputFilePath}"`;
+  const piperCommand = `echo "${textToSpeak.replace(/"/g, '\\"')}" | "${PIPER_PATH}" --model "${MODEL_PATH}" --output_file "${wavFilePath}"`;
 
   try {
-    console.log(`Executing Piper command: ${command}`);
-    const { stdout, stderr } = await execPromise(command, { shell: true }); // Using shell true for pipe
-    if (stderr) {
-      console.error(`Piper stderr: ${stderr}`);
-      // Depending on piper's behavior, stderr might not always mean failure.
-    }
-    console.log(`Piper stdout: ${stdout}`);
-    console.log(`Audio generated: ${absoluteOutputFilePath}`);
+    // ---- ETAPA 1: Gerar o arquivo .wav com o Piper ----
+    console.log('Gerando arquivo .wav com Piper...');
+    await execPromise(piperCommand, { shell: true });
+    console.log(`Arquivo .wav gerado: ${wavFilePath}`);
 
-    // Check if file was created
-    try {
-      await fs.access(absoluteOutputFilePath);
-    } catch (fileError) {
-      console.error(`Failed to access generated audio file: ${absoluteOutputFilePath}`, fileError);
-      return { success: false, error: 'Failed to generate audio file locally.' };
-    }
-
-    // Read the file and encode it to base64
-    const audioFileBuffer = await fs.readFile(absoluteOutputFilePath);
-    const audioFileBase64 = audioFileBuffer.toString('base64');
+    // ---- ETAPA 2: Converter .wav para .ogg com ffmpeg ----
+    console.log('Convertendo para .ogg (formato do WhatsApp)...');
+    await new Promise((resolve, reject) => {
+      ffmpeg(wavFilePath)
+        .audioCodec('libopus')
+        .audioBitrate('32k')
+        .outputOptions('-vbr', 'on')
+        .output(oggFilePath)
+        .on('end', () => {
+          console.log('Conversão para .ogg concluída.');
+          resolve();
+        })
+        .on('error', (err) => {
+          console.error('Erro na conversão do ffmpeg:', err.message);
+          reject(err);
+        })
+        .run();
+    });
     
+    // ---- ETAPA 3: Ler o arquivo final e montar o payload ----
+    const audioFileBuffer = await fs.readFile(oggFilePath);
+    const audioDataUri = `data:audio/ogg;base64,${audioFileBuffer.toString('base64')}`;
+
+    // Monta o payload EXATAMENTE como a documentação do Swagger especifica
     const payload = {
-        to: recipientId, 
-        file: `data:audio/wav;base64,${audioFileBase64}`,
-        filename: 'audio.wav',
-        ptt: false, // Explicitly set ptt to false
-      };
+      args: {
+        to: recipientId,
+        file: audioDataUri,
+        quotedMsgId: quotedMsgId || undefined
+      }
+    };
 
-    if (quotedMsgId && quotedMsgId.trim() !== '') { 
-      payload.quotedMsgId = quotedMsgId; // No longer nested under args
-    }
+    console.log(`Enviando para o endpoint: ${SEND_PTT_ENDPOINT}`);
+    console.log('Estrutura do payload final:', JSON.stringify(payload, null, 2));
 
-    console.log(`Sending audio to endpoint: ${SEND_FILE_ENDPOINT} with recipient:`, recipientId);
-    console.log('Payload being sent:', JSON.stringify(payload, null, 2)); // Log the new payload structure
-    const fetchResponse = await fetch(SEND_FILE_ENDPOINT, { // Changed to SEND_FILE_ENDPOINT
+    // ---- ETAPA 4: Enviar a requisição para a API ----
+    const fetchResponse = await fetch(SEND_PTT_ENDPOINT, {
       method: 'POST',
       headers: {
         'Accept': '*/*',
@@ -77,36 +100,37 @@ export default async function generateAndSendAudio(textToSpeak, recipientId, quo
       body: JSON.stringify(payload),
     });
 
+    // Tratamento de erro da requisição
     if (!fetchResponse.ok) {
-      const errorData = await fetchResponse.text(); // Try to get text for more detailed error
+      const errorData = await fetchResponse.text();
       console.error('Error response data (fetch):', errorData);
-      console.error('Error response status (fetch):', fetchResponse.status);
-      throw new Error(`HTTP error! status: ${fetchResponse.status}, body: ${errorData}`);
+      throw new Error(`Erro HTTP! Status: ${fetchResponse.status}, Corpo: ${errorData}`);
     }
 
     const responseData = await fetchResponse.json();
-    console.log('Audio sent successfully:', responseData);
-    return { success: true, message: 'Audio generated and sent successfully.' };
+    console.log('Resposta da API:', responseData);
+    
+    // Tratamento de erro DENTRO da resposta da API
+    if (responseData.success === false) {
+      const apiError = responseData.error?.message || JSON.stringify(responseData.error);
+      console.error("A API retornou sucesso=false:", apiError);
+      throw new Error(`A API retornou um erro: ${apiError}`);
+    }
+
+    return { success: true, message: 'Mensagem de voz gerada e enviada com sucesso.' };
 
   } catch (error) {
-    console.error('Error in generateAndSendAudio:', error.message);
-    if (error.response) {
-      console.error('Error response data:', error.response.data);
-      console.error('Error response status:', error.response.status);
-    }
+    console.error('Ocorreu um erro geral no processo de envio de áudio:', error.message);
     return { success: false, error: error.message };
   } finally {
-    // Clean up the temporary audio file
+    // ---- ETAPA 5: Limpeza dos arquivos temporários ----
     try {
-      await fs.access(absoluteOutputFilePath); // Check if file exists before trying to delete
-      await fs.unlink(absoluteOutputFilePath);
-      console.log(`Temporary audio file deleted: ${absoluteOutputFilePath}`);
-    } catch (cleanupError) {
-      // If the file wasn't created due to an earlier error, this will fail.
-      // Or if deletion fails for some other reason.
-      if (cleanupError.code !== 'ENOENT') { // ENOENT means file not found, which is fine if generation failed
-          console.error(`Error cleaning up temporary audio file ${absoluteOutputFilePath}:`, cleanupError.message);
-      }
-    }
+      await fs.unlink(wavFilePath);
+      console.log(`Arquivo temporário deletado: ${wavFilePath}`);
+    } catch (e) { /* ignora erro se o arquivo não existir */ }
+    try {
+      await fs.unlink(oggFilePath);
+      console.log(`Arquivo temporário deletado: ${oggFilePath}`);
+    } catch (e) { /* ignora erro se o arquivo não existir */ }
   }
 }
