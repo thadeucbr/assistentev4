@@ -77,14 +77,14 @@ export default async function processMessage(message) {
 
     messages.push(response.message);
     if ((response.message.tool_calls && response.message.tool_calls.length > 0) || response.message.function_call) {
-      messages = await toolCall(messages, response, tools, data.from, data.id);
+      messages = await toolCall(messages, response, tools, data.from, data.id, userContent);
     }
     await updateUserContext(userId, { messages });
     await updateUserProfileSummary(userId, messages);
   }
 }
 
-async function toolCall(messages, response, tools, from, id) {
+async function toolCall(messages, response, tools, from, id, userContent) {
   const newMessages = messages;
   if (response.message.function_call) {
     response.message.tool_calls = [
@@ -128,7 +128,13 @@ async function toolCall(messages, response, tools, from, id) {
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
       } else if (toolCall.function.name === 'browse') {
         const result = await browse({ url: args.url });
-        newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
+        if (result.error && result.error.includes('net::ERR_NAME_NOT_RESOLVED')) {
+          console.warn(`Browse failed for ${args.url} due to name resolution error. Attempting web search as fallback.`);
+          const webSearchResult = await webSearch({ query: userContent });
+          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Browse failed. Attempted web search with query "${userContent}": ${JSON.stringify(webSearchResult)}` });
+        } else {
+          newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
+        }
       } else if (toolCall.function.name === 'web_search') {
         const result = await webSearch({ query: args.query });
         newMessages.push({ name: 'web_search', role: 'tool', content: JSON.stringify(result) });
