@@ -39,11 +39,16 @@ export default async function webSearch({ query }) {
         const linkElement = result.querySelector('h2 a');
         const snippetElement = result.querySelector('.b_caption p');
 
-        if (titleElement && linkElement && snippetElement) {
+        // Log to debug if elements are found
+        console.log('Title element:', titleElement);
+        console.log('Link element:', linkElement);
+        console.log('Snippet element:', snippetElement);
+
+        if (titleElement && linkElement) { // Snippet is optional
           results.push({
-            title: titleElement.innerText,
+            title: titleElement.innerText.trim(),
             link: linkElement.href,
-            snippet: snippetElement.innerText
+            snippet: snippetElement ? snippetElement.innerText.trim() : ''
           });
         }
       });
