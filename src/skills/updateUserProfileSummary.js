@@ -13,7 +13,7 @@ export default async function updateUserProfileSummary(userId, conversationHisto
       SUMMARY_PROMPT,
       ...conversationHistory
     ];
-    const response = await chatAi(messages, 0.5, 100);
+    const response = await chatAi(messages);
     const summary = response.message.content;
 
     const userProfile = await getUserProfile(userId);
