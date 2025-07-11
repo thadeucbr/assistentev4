@@ -31,7 +31,7 @@ export async function execute(userQuery, from, id) {
           return `Erro ao gerar áudio: ${audioResult.error}`;
         }
       }
+    }
   }
   return `Não foi possível gerar o áudio com a sua solicitação. Por favor, tente novamente com um prompt mais claro.`;
-}
 }
