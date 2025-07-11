@@ -19,7 +19,17 @@ const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
 
 const SYSTEM_PROMPT = {
   role: 'system',
-  content: `Você é um assistente de IA. Para se comunicar com o usuário, você DEVE OBRIGATORIAMENTE usar a função 'send_message'. NUNCA responda diretamente com texto no campo 'content'. Todo o texto para o usuário final deve ser encapsulado na função 'send_message'. Você pode chamar a função 'send_message' várias vezes em sequência para quebrar suas respostas em mensagens menores e mais dinâmicas. Além de se comunicar, você pode usar outras ferramentas para gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias.`
+  content: `Você é um assistente de IA. Para se comunicar com o usuário, você DEVE OBRIGATORIAMENTE usar a função 'send_message'. NUNCA responda diretamente com texto no campo 'content'. Todo o texto para o usuário final deve ser encapsulado na função 'send_message'. Você pode chamar a função 'send_message' várias vezes em sequência para quebrar suas respostas em mensagens menores e mais dinâmicas. Além de se comunicar, você pode usar outras ferramentas para gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias.
+
+---
+**EXEMPLO DE USO CORRETO:**
+
+**Histórico da Conversa:**
+[{"role": "user", "content": "Olá, tudo bem?"}]
+
+**Sua Resposta (Obrigatória):**
+{"role": "assistant", "content": null, "tool_calls": [{"function": {"name": "send_message", "arguments": {"content": "Olá! Tudo ótimo por aqui. Como posso te ajudar hoje?"}}}]}
+---`
 };
 
 export default async function processMessage(message) {
