@@ -1,5 +1,30 @@
 import chatAi from '../config/ai/chat.ai.js';
 import tools from '../config/ai/tools.ai.js';
+
+const GENERATE_IMAGE_AGENT_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'generate_image',
+      description: 'Generate an image using the Stable Diffusion API based on a text prompt. The default output size is 512x512 pixels. The prompt MUST be in English.',
+      parameters: {
+        type: 'object',
+        properties: {
+          prompt: { type: 'string', description: 'Text prompt for image generation. Must be in English.' },
+          seed: { type: 'number', description: 'Seed for reproducibility. Use -1 for a random seed.' },
+          subseed: { type: 'number', description: 'Subseed for additional variation. Use -1 to disable.' },
+          subseed_strength: { type: 'number', description: 'Strength of subseed effect (0 to 1).' },
+          steps: { type: 'integer', description: 'Diffusion steps. Higher improves quality but increases time.' },
+          width: { type: 'integer', default: 512, description: 'Output width in pixels. Minimum 512.' },
+          height: { type: 'integer', default: 512, description: 'Output height in pixels. Minimum 512.' },
+          pag_scale: { type: 'number', default: 7.5, description: 'Attention guidance scale. Default 7.5.' },
+          negative_prompt: { type: 'string', description: 'Negative prompt to exclude unwanted elements.' }
+        },
+        required: ['prompt']
+      }
+    }
+  }
+];
 import generateImage from '../skills/generateImage.js';
 import sendMessage from '../whatsapp/sendMessage.js';
 import sendImage from '../whatsapp/sendImage.js';
@@ -16,7 +41,7 @@ Após gerar a imagem, você deve informar o usuário sobre o sucesso da operaç�
 
 export async function execute(userQuery, from) {
   let messages = [SYSTEM_PROMPT, { role: 'user', content: userQuery }];
-  let response = await chatAi(messages, tools);
+  let response = await chatAi(messages, GENERATE_IMAGE_AGENT_TOOLS);
 
   if (response.message.tool_calls && response.message.tool_calls.length > 0) {
     for (const toolCall of response.message.tool_calls) {

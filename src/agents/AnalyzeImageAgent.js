@@ -1,5 +1,23 @@
 import chatAi from '../config/ai/chat.ai.js';
 import tools from '../config/ai/tools.ai.js';
+
+const ANALYZE_IMAGE_AGENT_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'analyze_image',
+      description: 'Analyze an image using a provided prompt to describe its contents.',
+      parameters: {
+        type: 'object',
+        properties: {
+          image: { type: 'string', description: 'Base64 encoded image to analyze.' },
+          prompt: { type: 'string', description: 'Prompt guiding the analysis. Must be in English.' }
+        },
+        required: ['image']
+      }
+    }
+  }
+];
 import analyzeImage from '../skills/analyzeImage.js';
 
 const SYSTEM_PROMPT = {
@@ -14,7 +32,7 @@ Após analisar a imagem, você deve retornar a análise para o usuário.`
 
 export async function execute(image, prompt) {
   let messages = [SYSTEM_PROMPT, { role: 'user', content: `Analise a imagem com o seguinte prompt: ${prompt}` }];
-  let response = await chatAi(messages, tools);
+  let response = await chatAi(messages, ANALYZE_IMAGE_AGENT_TOOLS);
 
   if (response.message.tool_calls && response.message.tool_calls.length > 0) {
     for (const toolCall of response.message.tool_calls) {

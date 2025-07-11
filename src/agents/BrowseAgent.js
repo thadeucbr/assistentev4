@@ -1,17 +1,42 @@
 import chatAi from '../config/ai/chat.ai.js';
 import tools from '../config/ai/tools.ai.js';
+
+const BROWSE_AGENT_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'browse',
+      description: 'Extracts the content from a given URL. DO NOT use this tool with search engine result pages (e.g., Google, Bing, DuckDuckGo) or any URL that is not a direct content page.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'The URL to browse.' }
+        },
+        required: ['url']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'web_search',
+      description: `Performs a web search to find information or URLs. Use this when you need to find a website or information you don't know.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'The search query.' }
+        },
+        required: ['query']
+      }
+    }
+  }
+];
 import browse from '../skills/browse.js';
 import webSearch from '../skills/webSearch.js';
 
 const SYSTEM_PROMPT = {
   role: 'system',
-  content: `Você é um agente especializado em navegação e busca na web. Sua função é, dada uma consulta do usuário, primeiro tentar navegar diretamente para uma URL fornecida. Se a navegação falhar, especialmente devido a erros de resolução de nome (net::ERR_NAME_NOT_RESOLVED), você deve realizar uma busca na web (web_search) com a consulta original do usuário para encontrar informações relevantes. Após a busca, você deve analisar os resultados e, se apropriado, tentar navegar para uma das URLs encontradas para extrair o conteúdo. Seu objetivo final é retornar a informação mais relevante para a consulta do usuário, seja por navegação direta ou por busca e posterior navegação.
-
-Você tem acesso às seguintes ferramentas:
-- 'browse': Para navegar e extrair conteúdo de uma URL específica.
-- 'web_search': Para realizar buscas na web e obter uma lista de resultados.
-
-Sempre que usar uma ferramenta, você deve adicionar o resultado ao histórico de mensagens para que o modelo possa processá-lo. Ao final, você deve retornar um resumo conciso da informação encontrada ou uma mensagem indicando que a informação não pôde ser encontrada.`
+  content: `Você é um agente especializado em navegação e busca na web. Sua função é, dada uma consulta do usuário, primeiro tentar navegar diretamente para uma URL fornecida. Se a navegação falhar, especialmente devido a erros de resolução de nome (net::ERR_NAME_NOT_RESOLVED), você deve realizar uma busca na web (web_search) com a consulta original do usuário para encontrar informações relevantes. Após a busca, você deve analisar os resultados e, se apropriado, tentar navegar para uma das URLs encontradas para extrair o conteúdo. Seu objetivo final é retornar a informação mais relevante para a consulta do usuário, seja por navegação direta ou por busca e posterior navegação.`
 };
 
 export async function execute(userQuery) {
@@ -24,7 +49,7 @@ export async function execute(userQuery) {
   while (iterationCount < maxIterations) {
     iterationCount++;
     console.log(`BrowseAgent: Iteration ${iterationCount}. Sending messages to chatAi:`, messages);
-    response = await chatAi(messages, tools);
+    response = await chatAi(messages, BROWSE_AGENT_TOOLS);
     console.log(`BrowseAgent: Received response from chatAi:`, response.message);
 
     if (response.message.tool_calls && response.message.tool_calls.length > 0) {
@@ -49,7 +74,6 @@ export async function execute(userQuery) {
           }
         } else if (toolCall.function.name === 'web_search') {
           toolResult = await webSearch({ query: args.query });
-          console.log(`BrowseAgent: Web search tool result:`, toolResult);
         } else {
           toolResult = { error: `Unknown tool: ${toolCall.function.name}` };
           console.error(`BrowseAgent: Unknown tool encountered: ${toolCall.function.name}`);
