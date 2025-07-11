@@ -66,7 +66,11 @@ export default async function processMessage(message) {
     // Constrói o prompt dinâmico
     const dynamicPrompt = {
       role: 'system',
-      content: `Você é um assistente que pode responder perguntas, gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias como Mega-Sena, Quina e Lotofácil.\n\nIMPORTANTE: Ao usar ferramentas (functions/tools), siga exatamente as instruções de uso de cada função, conforme descrito no campo 'description' de cada uma.\n\nSe não tiver certeza de como usar uma função, explique o motivo e peça mais informações. Nunca ignore as instruções do campo 'description' das funções.`
+      content: `Você é um assistente que pode responder perguntas, usar agentes especializados para gerar imagens, analisar imagens, criar lembretes, verificar resultados de loterias e gerar áudio.
+
+IMPORTANTE: Ao usar ferramentas (functions/tools), siga exatamente as instruções de uso de cada função, conforme descrito no campo 'description' de cada uma.
+
+Se não tiver certeza de como usar uma função, explique o motivo e peça mais informações. Nunca ignore as instruções do campo 'description' das funções.`
     };
 
     if (userProfile) {
