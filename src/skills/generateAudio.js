@@ -43,20 +43,35 @@ async function generateAudioLocally(text) {
 
   try {
     // Etapa 1: Gerar .wav com Piper
-    const piperCommand = `echo "${text.replace(/"/g, '\"')}" | "${PIPER_PATH}" --model "${MODEL_PATH}" --output_file "${wavFilePath}"`;
+    const piperCommand = `echo "${text}" | "${PIPER_PATH}" --model "${MODEL_PATH}" --output_file "${wavFilePath}"`;
     console.log('Gerando áudio localmente com Piper...');
-    await execPromise(piperCommand, { shell: true });
+    console.log(`Piper Command: ${piperCommand}`);
+    try {
+      const { stdout, stderr } = await execPromise(piperCommand, { shell: true });
+      console.log(`Piper stdout: ${stdout}`);
+      if (stderr) console.error(`Piper stderr: ${stderr}`);
+    } catch (execError) {
+      console.error(`Error executing Piper command: ${execError.message}`);
+      throw execError;
+    }
 
     // Etapa 2: Converter .wav para .ogg com ffmpeg
     console.log('Convertendo para .ogg...');
+    console.log(`FFmpeg input: ${wavFilePath}, output: ${oggFilePath}`);
     await new Promise((resolve, reject) => {
       ffmpeg(wavFilePath)
         .audioCodec('libopus')
         .audioBitrate('32k')
         .outputOptions('-vbr', 'on')
         .output(oggFilePath)
-        .on('end', resolve)
-        .on('error', reject)
+        .on('end', () => {
+          console.log('FFmpeg conversion finished.');
+          resolve();
+        })
+        .on('error', (err) => {
+          console.error(`FFmpeg error: ${err.message}`);
+          reject(err);
+        })
         .run();
     });
 
