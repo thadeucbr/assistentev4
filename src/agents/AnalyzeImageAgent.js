@@ -1,4 +1,5 @@
 import chatAi from '../config/ai/chat.ai.js';
+import tools from '../config/ai/tools.ai.js';
 import analyzeImage from '../skills/analyzeImage.js';
 
 const SYSTEM_PROMPT = {
@@ -13,7 +14,7 @@ Após analisar a imagem, você deve retornar a análise para o usuário.`
 
 export async function execute(image, prompt) {
   let messages = [SYSTEM_PROMPT, { role: 'user', content: `Analise a imagem com o seguinte prompt: ${prompt}` }];
-  let response = await chatAi(messages);
+  let response = await chatAi(messages, tools);
 
   if (response.message.tool_calls && response.message.tool_calls.length > 0) {
     for (const toolCall of response.message.tool_calls) {

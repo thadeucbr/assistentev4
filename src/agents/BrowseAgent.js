@@ -1,4 +1,5 @@
 import chatAi from '../config/ai/chat.ai.js';
+import tools from '../config/ai/tools.ai.js';
 import browse from '../skills/browse.js';
 import webSearch from '../skills/webSearch.js';
 
@@ -15,7 +16,7 @@ Sempre que usar uma ferramenta, você deve adicionar o resultado ao histórico d
 
 export async function execute(userQuery) {
   let messages = [SYSTEM_PROMPT, { role: 'user', content: userQuery }];
-  let response = await chatAi(messages);
+  let response = await chatAi(messages, tools);
 
   // Loop para permitir que o agente tome múltiplas ações
   while (response.message.tool_calls && response.message.tool_calls.length > 0) {
@@ -30,7 +31,7 @@ export async function execute(userQuery) {
           // Fallback to web search
           const webSearchResult = await webSearch({ query: userQuery });
           messages.push({ name: 'web_search', role: 'tool', content: JSON.stringify(webSearchResult) });
-          response = await chatAi(messages);
+          response = await chatAi(messages, tools);
           continue; // Continue to the next iteration of the while loop
         }
       } else if (toolCall.function.name === 'web_search') {
@@ -40,7 +41,7 @@ export async function execute(userQuery) {
       }
       messages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(toolResult) });
     }
-    response = await chatAi(messages);
+    response = await chatAi(messages, tools);
   }
 
   return response.message.content; // Return the final content from the agent

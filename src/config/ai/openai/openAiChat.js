@@ -22,7 +22,7 @@ function sanitizeMessages(messages) {
     });
 }
 
-export default async function openAiChat(chatMessages) {
+export default async function openAiChat(chatMessages, tools) {
   console.log('openAiChat', chatMessages);
   chatMessages = sanitizeMessages(chatMessages);
   if (!OPENAI_KEY) {

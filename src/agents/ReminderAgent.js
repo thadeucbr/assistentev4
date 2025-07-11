@@ -1,4 +1,5 @@
 import chatAi from '../config/ai/chat.ai.js';
+import tools from '../config/ai/tools.ai.js';
 import { addReminder, getReminders } from '../repository/reminderRepository.js';
 import { scheduleReminder } from '../skills/reminder.js';
 
@@ -15,7 +16,7 @@ Após executar a ação, você deve retornar o resultado para o usuário.`
 
 export async function execute(userQuery, from) {
   let messages = [SYSTEM_PROMPT, { role: 'user', content: userQuery }];
-  let response = await chatAi(messages);
+  let response = await chatAi(messages, tools);
 
   if (response.message.tool_calls && response.message.tool_calls.length > 0) {
     for (const toolCall of response.message.tool_calls) {

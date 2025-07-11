@@ -3,7 +3,7 @@ import tools from '../tools.ai.js';
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'mistral';
 
-export default async function ollamaChat(chatMessages) { 
+export default async function ollamaChat(chatMessages, tools) { 
   // console.log('ollamaChat', chatMessages);
   const body = {
     model: OLLAMA_MODEL,
