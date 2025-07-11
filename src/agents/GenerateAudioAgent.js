@@ -21,7 +21,7 @@ export async function execute(userQuery, from, id) {
     for (const toolCall of response.message.tool_calls) {
       const args = toolCall.function.arguments;
 
-      if (toolCall.function.name === 'generate_audio') {
+      if (toolCall.function.name === 'audio_generation_agent') {
         console.log('Generating audio with args:', args);
         const audioResult = await generateAudio(args.text);
         if (audioResult.success) {
