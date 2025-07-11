@@ -2,20 +2,12 @@ export default [
       {
         type: 'function',
         function: {
-          name: 'generate_image',
-          description: 'Generate an image using the Stable Diffusion API based on a text prompt. The default output size is 512x512 pixels. The prompt MUST be in English.',
+          name: 'image_generation_agent',
+          description: 'An agent specialized in generating images based on a text prompt. Use this tool when the user asks to create or generate an image.',
           parameters: {
             type: 'object',
             properties: {
-              prompt: { type: 'string', description: 'Text prompt for image generation. Must be in English.' },
-              seed: { type: 'number', description: 'Seed for reproducibility. Use -1 for a random seed.' },
-              subseed: { type: 'number', description: 'Subseed for additional variation. Use -1 to disable.' },
-              subseed_strength: { type: 'number', description: 'Strength of subseed effect (0 to 1).' },
-              steps: { type: 'integer', description: 'Diffusion steps. Higher improves quality but increases time.' },
-              width: { type: 'integer', default: 512, description: 'Output width in pixels. Minimum 512.' },
-              height: { type: 'integer', default: 512, description: 'Output height in pixels. Minimum 512.' },
-              pag_scale: { type: 'number', default: 7.5, description: 'Attention guidance scale. Default 7.5.' },
-              negative_prompt: { type: 'string', description: 'Negative prompt to exclude unwanted elements.' }
+              prompt: { type: 'string', description: 'The user\'s request or a concise description of the image to generate.' }
             },
             required: ['prompt']
           }
@@ -38,8 +30,8 @@ export default [
       {
         type: 'function',
         function: {
-          name: 'analyze_image',
-          description: 'Analyze an image using a provided prompt to describe its contents.',
+          name: 'image_analysis_agent',
+          description: 'An agent specialized in analyzing images. Use this tool when the user provides an image and asks for its analysis.',
           parameters: {
             type: 'object',
             properties: {
@@ -53,74 +45,54 @@ export default [
       {
         type: 'function',
         function: {
-          name: 'reminder',
-          description: 'Gerencia os lembretes do usuário: "create" para criar e "list" para listar.',
+          name: 'reminder_agent',
+          description: 'An agent specialized in managing user reminders. Use this tool when the user asks to create or list reminders.',
           parameters: {
             type: 'object',
             properties: {
-              action: { type: 'string', description: 'Ação a ser executada: "create" ou "list".' },
-              message: { type: 'string', description: 'Mensagem do lembrete (necessário para criação).' },
-              scheduledTime: { type: 'string', description: 'Horário agendado (ISO 8601 ou "now + PT..." ).' }
+              query: { type: 'string', description: 'The user\'s request regarding reminders (e.g., "create a reminder to call mom tomorrow", "list my reminders").' }
             },
-            required: ['action']
+            required: ['query']
           }
         }
       },
       {
         type: 'function',
         function: {
-          name: 'lottery_check',
-          description: 'Verifica resultados de loteria para uma modalidade e sorteio opcionais usando a API da Caixa.',
+          name: 'lottery_check_agent',
+          description: 'An agent specialized in checking lottery results. Use this tool when the user asks for lottery results.',
           parameters: {
             type: 'object',
             properties: {
-              modalidade: { type: 'string', description: 'Modalidade da loteria: megasena, lotofacil, quina, lotomania, timemania, duplasena, supersete, loteca, diadesorte.' },
-              sorteio: { type: 'string', description: 'Número do concurso. Se omitido, retorna o último resultado.' }
+              query: { type: 'string', description: 'The user\'s query regarding lottery results (e.g., "Mega-Sena results", "Quina latest draw").' }
             },
-            required: ['modalidade']
+            required: ['query']
           }
         }
       },
       {
         type: 'function',
         function: {
-          name: 'generate_audio',
-          description: 'Gera um áudio a partir de um texto e envia para o usuário. Use para responder o usuário com áudio.',
+          name: 'audio_generation_agent',
+          description: 'An agent specialized in generating audio from text. Use this tool when the user asks to generate audio or respond with audio.',
           parameters: {
             type: 'object',
             properties: {
-              textToSpeak: {
-                type: 'string',
-                description: 'O texto que será transformado em áudio.'
-              }
+              query: { type: 'string', description: 'The text to be converted into audio.' }
             },
-            required: ['textToSpeak']
+            required: ['query']
           }
         }
       },
       {
         type: 'function',
         function: {
-          name: 'browse',
-          description: 'Extracts the content from a given URL. DO NOT use this tool with search engine result pages (e.g., Google, Bing, DuckDuckGo) or any URL that is not a direct content page.',
+          name: 'information_retrieval_agent',
+          description: 'An agent specialized in web browsing and searching. Use this tool when you need to find information on the web, browse a specific URL, or perform a web search. It handles retries and fallbacks internally.',
           parameters: {
             type: 'object',
             properties: {
-              url: { type: 'string', description: 'The URL to browse.' }
-            },
-            required: ['url']
-          }
-        }
-      },
-      {
-        type: 'function',
-        function: {
-          name: 'web_search',
-          description: `Performs a web search to find information or URLs. Use this when you need to find a website or information you don't know.`,
-          parameters: {
-            type: 'object',
-            properties: {
-              query: { type: 'string', description: 'The search query.' }
+              query: { type: 'string', description: `The user's original query or a concise search term for the information needed.` }
             },
             required: ['query']
           }

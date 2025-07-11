@@ -1,20 +1,19 @@
 import sendImage from '../whatsapp/sendImage.js';
 import sendMessage from '../whatsapp/sendMessage.js';
-import generateImage from './generateImage.js';
-import analyzeImage from './analyzeImage.js';
+
 import ollama from 'ollama';
-import lotteryCheck from './lotteryCheck.js';
 import { getUserContext, updateUserContext } from '../repository/contextRepository.js';
 import { getUserProfile, updateUserProfile } from '../repository/userProfileRepository.js';
 import analyzeSentiment from './analyzeSentiment.js';
-import { addReminder, getReminders } from '../repository/reminderRepository.js';
-import { scheduleReminder } from './reminder.js';
 import chatAi from '../config/ai/chat.ai.js';
 import tools from '../config/ai/tools.ai.js';
 import updateUserProfileSummary from './updateUserProfileSummary.js';
-import webSearch from './webSearch.js';
-import browse from './browse.js';
-import generateAudio from './generateAudio.js';
+import { execute as browseAgentExecute } from '../agents/BrowseAgent.js';
+import { execute as generateImageAgentExecute } from '../agents/GenerateImageAgent.js';
+import { execute as analyzeImageAgentExecute } from '../agents/AnalyzeImageAgent.js';
+import { execute as reminderAgentExecute } from '../agents/ReminderAgent.js';
+import { execute as lotteryCheckAgentExecute } from '../agents/LotteryCheckAgent.js';
+import { execute as generateAudioAgentExecute } from '../agents/GenerateAudioAgent.js';
 import sendPtt from '../whatsapp/sendPtt.js';
 const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
 
@@ -22,15 +21,17 @@ const SYSTEM_PROMPT = {
   role: 'system',
   content: `Você é um assistente de IA. Para se comunicar com o usuário, você DEVE OBRIGATORIAMENTE usar a função 'send_message'. NUNCA responda diretamente com texto no campo 'content'. Todo o texto para o usuário final deve ser encapsulado na função 'send_message'. Você pode chamar a função 'send_message' várias vezes em sequência para quebrar suas respostas em mensagens menores e mais dinâmicas.
 
-Para buscar informações na web, siga este processo em duas etapas:
-1. **Descubra:** Use a função 'web_search' com uma query de busca (ex: "melhores restaurantes em São Paulo") para encontrar URLs relevantes.
-2. **Extraia:** Analise os resultados da busca, escolha a URL mais promissora e use a função 'browse' para extrair as informações daquela página específica. **NUNCA use 'browse' em URLs de motores de busca (Bing, Google, etc.).**
+Você tem acesso a agentes especializados para realizar tarefas específicas. Use o agente apropriado para cada tipo de solicitação:
+- Para buscar informações na web, navegar em URLs ou realizar pesquisas, use o agente 'information_retrieval_agent'.
+- Para gerar imagens, use o agente 'image_generation_agent'.
+- Para analisar imagens, use o agente 'image_analysis_agent'.
+- Para gerenciar lembretes (criar ou listar), use o agente 'reminder_agent'.
+- Para verificar resultados de loterias, use o agente 'lottery_check_agent'.
+- Para gerar áudio a partir de texto, use o agente 'audio_generation_agent'.
 
 Ao analisar informações, especialmente de fontes da web, priorize dados recentes. Se a informação contiver datas, mencione a data da informação ao usuário para indicar sua relevância. Se a informação estiver desatualizada, informe o usuário sobre isso.
 
-Se uma tentativa de 'browse' falhar (especialmente com erros de resolução de nome como 'net::ERR_NAME_NOT_RESOLVED'), uma 'web_search' será automaticamente realizada como fallback. Nesses casos, analise cuidadosamente os resultados da 'web_search' para tentar encontrar a informação original ou uma alternativa relevante. Se a 'web_search' também não produzir resultados úteis, informe o usuário sobre a falha e sugira alternativas.
-
-Além disso, você pode usar outras ferramentas para gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias.`
+Sempre que usar um agente, você deve passar a consulta completa do usuário ou uma descrição clara da tarefa para o parâmetro 'query' do agente.`
 };
 
 export default async function processMessage(message) {
@@ -101,55 +102,27 @@ async function toolCall(messages, response, tools, from, id, userContent) {
   if (response.message.tool_calls && response.message.tool_calls.length > 0) {
     for (const toolCall of response.message.tool_calls) {
       const args = toolCall.function.arguments;
-      if (toolCall.function.name === 'generate_image') {
-        console.log(args)
-        const image = await generateImage({ ...args });
-        if (image.error) {
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Erro ao gerar imagem: ${image.error}` });
-        } else {
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Image generated and sent: "${args.prompt}"` });
-          await sendImage(from, image, args.prompt);
-        }
+      if (toolCall.function.name === 'image_generation_agent') {
+        const result = await generateImageAgentExecute(args.prompt, from);
+        newMessages.push({ name: toolCall.function.name, role: 'tool', content: result });
       } else if (toolCall.function.name === 'send_message') {
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Mensagem enviada ao usuário: "${args.content}"` });
         await sendMessage(from, args.content);
-      } else if (toolCall.function.name === 'analyze_image') {
-        const analysis = await analyzeImage({ id, prompt: args.prompt });
-        newMessages.push({ name: toolCall.function.name, role: 'tool', content: analysis });
-      } else if (toolCall.function.name === 'reminder') {
-        if (args.action === 'create') {
-          const newReminder = await addReminder(from, args.message, args.scheduledTime);
-          scheduleReminder(newReminder);
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Lembrete criado: ${JSON.stringify(newReminder)}` });
-        } else if (args.action === 'list') {
-          const reminders = await getReminders(from);
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Seus lembretes: ${JSON.stringify(reminders)}` });
-        }
-      } else if (toolCall.function.name === 'lottery_check') {
-        const result = await lotteryCheck(args.modalidade, args.sorteio);
-        newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
-      } else if (toolCall.function.name === 'browse') {
-        const result = await browse({ url: args.url });
-        if (result.error && result.error.includes('net::ERR_NAME_NOT_RESOLVED')) {
-          console.warn(`Browse failed for ${args.url} due to name resolution error. Attempting web search as fallback.`);
-          const webSearchResult = await webSearch({ query: userContent });
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Browse failed. Attempted web search with query "${userContent}": ${JSON.stringify(webSearchResult)}` });
-        } else {
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
-        }
-      } else if (toolCall.function.name === 'web_search') {
-        const result = await webSearch({ query: args.query });
-        newMessages.push({ name: 'web_search', role: 'tool', content: JSON.stringify(result) });
-      } else if (toolCall.function.name === 'generate_audio') {
-        console.log('Generating audio with args:', args);
-        const audioResult = await generateAudio(args.textToSpeak);
-        if (audioResult.success) {
-          await sendPtt(from, audioResult.audioBuffer, id);
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Áudio gerado e enviado: "${args.textToSpeak}"` });
-        } else {
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Erro ao gerar áudio: ${audioResult.error}` });
-        }
-      } 
+      } else if (toolCall.function.name === 'image_analysis_agent') {
+        const result = await analyzeImageAgentExecute(data.body, args.prompt);
+        newMessages.push({ name: toolCall.function.name, role: 'tool', content: result });
+      } else if (toolCall.function.name === 'reminder_agent') {
+        const result = await reminderAgentExecute(args.query, from);
+        newMessages.push({ name: toolCall.function.name, role: 'tool', content: result });
+      } else if (toolCall.function.name === 'lottery_check_agent') {
+        const result = await lotteryCheckAgentExecute(args.query);
+        newMessages.push({ name: toolCall.function.name, role: 'tool', content: result });
+      } else if (toolCall.function.name === 'information_retrieval_agent') {
+        const result = await browseAgentExecute(args.query);
+        newMessages.push({ name: toolCall.function.name, role: 'tool', content: result });
+      } else if (toolCall.function.name === 'audio_generation_agent') {
+        const result = await generateAudioAgentExecute(args.query, from, id);
+        newMessages.push({ name: toolCall.function.name, role: 'tool', content: result }); 
     }
 
     const newResponse = await chatAi(newMessages);
@@ -166,4 +139,5 @@ async function toolCall(messages, response, tools, from, id, userContent) {
     return newMessages;
   }
   return messages;
+}
 }
