@@ -19,23 +19,13 @@ const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
 
 const SYSTEM_PROMPT = {
   role: 'system',
-  content: `content: `Você é um assistente de IA. Para se comunicar com o usuário, você DEVE OBRIGATORIAMENTE usar a função 'send_message'. NUNCA responda diretamente com texto no campo 'content'. Todo o texto para o usuário final deve ser encapsulado na função 'send_message'. Você pode chamar a função 'send_message' várias vezes em sequência para quebrar suas respostas em mensagens menores e mais dinâmicas.
+  content: `Você é um assistente de IA. Para se comunicar com o usuário, você DEVE OBRIGATORIAMENTE usar a função 'send_message'. NUNCA responda diretamente com texto no campo 'content'. Todo o texto para o usuário final deve ser encapsulado na função 'send_message'. Você pode chamar a função 'send_message' várias vezes em sequência para quebrar suas respostas em mensagens menores e mais dinâmicas.
 
 Para buscar informações na web, siga este processo em duas etapas:
 1. **Descubra:** Use a função 'web_search' com uma query de busca (ex: "melhores restaurantes em São Paulo") para encontrar URLs relevantes.
 2. **Extraia:** Analise os resultados da busca, escolha a URL mais promissora e use a função 'browse' para extrair as informações daquela página específica.
 
 Além disso, você pode usar outras ferramentas para gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias.`
-
----
-**EXEMPLO DE USO CORRETO:**
-
-**Histórico da Conversa:**
-[{"role": "user", "content": "Olá, tudo bem?"}]
-
-**Sua Resposta (Obrigatória):**
-{"role": "assistant", "content": null, "tool_calls": [{"function": {"name": "send_message", "arguments": {"content": "Olá! Tudo ótimo por aqui. Como posso te ajudar hoje?"}}}]}
----`
 };
 
 export default async function processMessage(message) {
