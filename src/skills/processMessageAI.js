@@ -150,6 +150,12 @@ async function toolCall(messages, response, tools, from, id) {
     if ((newResponse.message.tool_calls && newResponse.message.tool_calls.length > 0) || newResponse.message.function_call) {
       return toolCall(newMessages, newResponse, tools, from, id);
     }
+
+    // Fallback for when the model forgets to use the send_message tool
+    if (newResponse.message.content && newResponse.message.content.trim().length > 0) {
+      await sendMessage(from, newResponse.message.content);
+    }
+
     return newMessages;
   }
   return messages;
