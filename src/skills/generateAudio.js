@@ -36,14 +36,14 @@ async function ensureTempDirExists() {
  * Retorna um Buffer com o áudio em formato OGG.
  * @param {string} textToSpeak O texto a ser falado.
  */
-async function generateAudioLocally(textToSpeak) {
+async function generateAudioLocally(text) {
   const baseFileName = `local_audio_${Date.now()}`;
   const wavFilePath = path.resolve(path.join(TEMP_AUDIO_DIR, `${baseFileName}.wav`));
   const oggFilePath = path.resolve(path.join(TEMP_AUDIO_DIR, `${baseFileName}.ogg`));
 
   try {
     // Etapa 1: Gerar .wav com Piper
-    const piperCommand = `echo "${textToSpeak.replace(/"/g, '\\"')}" | "${PIPER_PATH}" --model "${MODEL_PATH}" --output_file "${wavFilePath}"`;
+    const piperCommand = `echo "${text.replace(/"/g, '\"')}" | "${PIPER_PATH}" --model "${MODEL_PATH}" --output_file "${wavFilePath}"`;
     console.log('Gerando áudio localmente com Piper...');
     await execPromise(piperCommand, { shell: true });
 
@@ -76,7 +76,7 @@ async function generateAudioLocally(textToSpeak) {
  * Retorna um Buffer com o áudio já em formato Opus.
  * @param {string} textToSpeak O texto a ser falado.
  */
-async function generateAudioWithOpenAI(textToSpeak) {
+async function generateAudioWithOpenAI(text) {
   console.log('Gerando áudio com a API da OpenAI...');
   const apiKey = process.env.OPENAI_API_KEY;
   const voice = process.env.OPENAI_TTS_VOICE || 'onyx';
@@ -90,7 +90,7 @@ async function generateAudioWithOpenAI(textToSpeak) {
     },
     body: JSON.stringify({
       model: model,
-      input: textToSpeak,
+      input: text,
       voice: voice,
       response_format: 'opus', // Pedimos o formato correto diretamente!
     }),
@@ -111,11 +111,11 @@ async function generateAudioWithOpenAI(textToSpeak) {
  * Função principal que gera e envia o áudio, escolhendo o provedor
  * com base na variável de ambiente TTS_PROVIDER.
  */
-export default async function generateAudio(textToSpeak) {
+export default async function generateAudio(text) {
   await ensureTempDirExists();
 
   try {
-    console.log(`Iniciando geração de áudio para: "${textToSpeak}"`);
+    console.log(`Iniciando geração de áudio para: "${text}"`);
     
     let audioBuffer;
     const provider = process.env.TTS_PROVIDER || 'local';
@@ -123,11 +123,11 @@ export default async function generateAudio(textToSpeak) {
     // Roteador: escolhe qual função de geração de áudio usar
     switch (provider) {
       case 'openai':
-        audioBuffer = await generateAudioWithOpenAI(textToSpeak);
+        audioBuffer = await generateAudioWithOpenAI(text);
         break;
       case 'local':
       default:
-        audioBuffer = await generateAudioLocally(textToSpeak);
+        audioBuffer = await generateAudioLocally(text);
         break;
     }
 
