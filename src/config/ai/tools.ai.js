@@ -97,5 +97,19 @@ export default [
             required: ['textToSpeak']
           }
         }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'web_search',
+          description: 'Performs a web search to find information or URLs. Use this when you need to find a website or information you don't know.',
+          parameters: {
+            type: 'object',
+            properties: {
+              query: { type: 'string', description: 'The search query.' }
+            },
+            required: ['query']
+          }
+        }
       }
     ];

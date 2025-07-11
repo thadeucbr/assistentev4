@@ -12,14 +12,20 @@ import { scheduleReminder } from './reminder.js';
 import chatAi from '../config/ai/chat.ai.js';
 import tools from '../config/ai/tools.ai.js';
 import updateUserProfileSummary from './updateUserProfileSummary.js';
-import browse from './browse.js';
+import webSearch from './webSearch.js';
 import generateAudio from './generateAudio.js';
 import sendPtt from '../whatsapp/sendPtt.js';
 const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
 
 const SYSTEM_PROMPT = {
   role: 'system',
-  content: `Você é um assistente de IA. Para se comunicar com o usuário, você DEVE OBRIGATORIAMENTE usar a função 'send_message'. NUNCA responda diretamente com texto no campo 'content'. Todo o texto para o usuário final deve ser encapsulado na função 'send_message'. Você pode chamar a função 'send_message' várias vezes em sequência para quebrar suas respostas em mensagens menores e mais dinâmicas. Além de se comunicar, você pode usar outras ferramentas para gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias.
+  content: `content: `Você é um assistente de IA. Para se comunicar com o usuário, você DEVE OBRIGATORIAMENTE usar a função 'send_message'. NUNCA responda diretamente com texto no campo 'content'. Todo o texto para o usuário final deve ser encapsulado na função 'send_message'. Você pode chamar a função 'send_message' várias vezes em sequência para quebrar suas respostas em mensagens menores e mais dinâmicas.
+
+Para buscar informações na web, siga este processo em duas etapas:
+1. **Descubra:** Use a função 'web_search' com uma query de busca (ex: "melhores restaurantes em São Paulo") para encontrar URLs relevantes.
+2. **Extraia:** Analise os resultados da busca, escolha a URL mais promissora e use a função 'browse' para extrair as informações daquela página específica.
+
+Além disso, você pode usar outras ferramentas para gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias.`
 
 ---
 **EXEMPLO DE USO CORRETO:**
@@ -127,9 +133,9 @@ async function toolCall(messages, response, tools, from, id) {
       } else if (toolCall.function.name === 'lottery_check') {
         const result = await lotteryCheck(args.modalidade, args.sorteio);
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
-      } else if (toolCall.function.name === 'browse') {
-        const result = await browse({ url: args.url });
-        newMessages.push({ name: 'browse', role: 'tool', content: JSON.stringify(result) });
+      } else if (toolCall.function.name === 'web_search') {
+        const result = await webSearch({ query: args.query });
+        newMessages.push({ name: 'web_search', role: 'tool', content: JSON.stringify(result) });
       } else if (toolCall.function.name === 'curl') {
         const result = await curl(args);
         newMessages.push({ name: 'curl', role: 'tool', content: JSON.stringify(result) });
