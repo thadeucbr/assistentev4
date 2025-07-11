@@ -112,6 +112,7 @@ async function toolCall(messages, response, tools, from, id, userContent) {
       } else if (toolCall.function.name === 'send_message') {
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Mensagem enviada ao usuário: "${args.content}"` });
         await sendMessage(from, args.content);
+        return newMessages; // Return immediately after sending message
       } else if (toolCall.function.name === 'image_analysis_agent') {
         const result = await analyzeImageAgentExecute(data.body, args.prompt);
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: result });
@@ -126,7 +127,8 @@ async function toolCall(messages, response, tools, from, id, userContent) {
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: result });
       } else if (toolCall.function.name === 'audio_generation_agent') {
         const result = await generateAudioAgentExecute(args.query, from, id);
-        newMessages.push({ name: toolCall.function.name, role: 'tool', content: result }); 
+        newMessages.push({ name: toolCall.function.name, role: 'tool', content: result });
+        return newMessages; // Return immediately after audio generation
     }
 
     const newResponse = await chatAi(newMessages);
