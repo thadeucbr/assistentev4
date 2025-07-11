@@ -129,8 +129,8 @@ async function toolCall(messages, response, tools, from, id) {
         const result = await browse({ url: args.url });
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
       } else if (toolCall.function.name === 'web_search') {
-        const result = await curl(args);
-        newMessages.push({ name: 'curl', role: 'tool', content: JSON.stringify(result) });
+        const result = await webSearch({ query: args.query });
+        newMessages.push({ name: 'web_search', role: 'tool', content: JSON.stringify(result) });
       } else if (toolCall.function.name === 'generate_audio') {
         console.log('Generating audio with args:', args);
         const audioResult = await generateAudio(args.textToSpeak);
