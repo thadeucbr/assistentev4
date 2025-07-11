@@ -102,7 +102,7 @@ export default [
         type: 'function',
         function: {
           name: 'browse',
-          description: 'Extracts the content from a given URL.',
+          description: 'Extracts the content from a given URL. DO NOT use this tool with search engine result pages (e.g., Google, Bing, DuckDuckGo) or any URL that is not a direct content page.',
           parameters: {
             type: 'object',
             properties: {
