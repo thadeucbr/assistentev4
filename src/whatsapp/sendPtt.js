@@ -1,5 +1,5 @@
 
-import fetch from 'node-fetch';
+
 
 const SEND_PTT_ENDPOINT = 'http://192.168.1.239:8088/sendPtt';
 
