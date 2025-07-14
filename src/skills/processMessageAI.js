@@ -5,6 +5,7 @@ import ollama from 'ollama';
 import { getUserContext, updateUserContext } from '../repository/contextRepository.js';
 import { getUserProfile, updateUserProfile } from '../repository/userProfileRepository.js';
 import analyzeSentiment from './analyzeSentiment.js';
+import inferInteractionStyle from './inferInteractionStyle.js';
 import chatAi from '../config/ai/chat.ai.js';
 import tools from '../config/ai/tools.ai.js';
 import updateUserProfileSummary from './updateUserProfileSummary.js';
@@ -52,14 +53,17 @@ export default async function processMessage(message) {
 
     // Análise de sentimento da mensagem atual
     const currentSentiment = await analyzeSentiment(userContent);
+    // Inferência do estilo de interação
+    const inferredStyle = await inferInteractionStyle(userContent);
 
-    // Atualiza o perfil do usuário com o novo sentimento
+    // Atualiza o perfil do usuário com o novo sentimento e estilo de interação
     const updatedProfile = {
       ...userProfile,
       sentiment: {
         average: currentSentiment, // Simplificado por enquanto
         trend: 'stable' // Simplificado por enquanto
-      }
+      },
+      interaction_style: inferredStyle
     };
     await updateUserProfile(userId, updatedProfile);
 
@@ -75,6 +79,9 @@ Se não tiver certeza de como usar uma função, explique o motivo e peça mais 
 
     if (userProfile) {
       dynamicPrompt.content += `\n\n--- Sobre o usuário ---\n${userProfile.summary || ''}\nSentimento: ${userProfile.sentiment?.average || 'neutro'}`;
+      if (userProfile.interaction_style) {
+        dynamicPrompt.content += `\nSeu estilo de comunicação deve ser: formalidade ${userProfile.interaction_style.formality}, humor ${userProfile.interaction_style.humor}, tom ${userProfile.interaction_style.tone}, verbosidade ${userProfile.interaction_style.verbosity}.`;
+      }
     }
 
     messages.push({ role: 'user', content: userContent });

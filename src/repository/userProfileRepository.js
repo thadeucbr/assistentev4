@@ -14,6 +14,6 @@ export async function updateUserProfile(userId, profileData) {
   await db.collection(COLLECTION).updateOne(
     { userId },
     { $set: { ...profileData, updatedAt: new Date() } },
-    { upsert: true }
+    { upsert: true, $setOnInsert: { createdAt: new Date() } }
   );
 }
