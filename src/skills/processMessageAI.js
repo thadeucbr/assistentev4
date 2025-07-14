@@ -134,18 +134,21 @@ async function toolCall(messages, response, tools, from, id, userContent) {
       }
     }
 
-    // Only make a new chatAi call if no direct communication occurred in this turn
-    if (!directCommunicationOccurred) {
-      const newResponse = await chatAi(newMessages);
-      newMessages.push(newResponse.message);
-      if ((newResponse.message.tool_calls && newResponse.message.tool_calls.length > 0) || newResponse.message.function_call) {
-        return toolCall(newMessages, newResponse, tools, from, id);
-      }
+    // If a direct communication tool was used, we are done with this turn.
+    if (directCommunicationOccurred) {
+      return newMessages;
+    }
 
-      // Fallback for when the model forgets to use the send_message tool
-      if (newResponse.message.content && newResponse.message.content.trim().length > 0) {
-        await sendMessage(from, newResponse.message.content);
-      }
+    // Only make a new chatAi call if no direct communication occurred in this turn
+    const newResponse = await chatAi(newMessages);
+    newMessages.push(newResponse.message);
+    if ((newResponse.message.tool_calls && newResponse.message.tool_calls.length > 0) || newResponse.message.function_call) {
+      return toolCall(newMessages, newResponse, tools, from, id);
+    }
+
+    // Fallback for when the model forgets to use the send_message tool
+    if (newResponse.message.content && newResponse.message.content.trim().length > 0) {
+      await sendMessage(from, newResponse.message.content);
     }
 
     return newMessages;
