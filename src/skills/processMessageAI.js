@@ -7,6 +7,7 @@ import lotteryCheck from './lotteryCheck.js';
 import { getUserContext, updateUserContext } from '../repository/contextRepository.js';
 import { getUserProfile, updateUserProfile } from '../repository/userProfileRepository.js';
 import analyzeSentiment from './analyzeSentiment.js';
+import inferInteractionStyle from './inferInteractionStyle.js';
 import { addReminder, getReminders } from '../repository/reminderRepository.js';
 import { scheduleReminder } from './reminder.js';
 import chatAi from '../config/ai/chat.ai.js';
@@ -51,14 +52,17 @@ export default async function processMessage(message) {
 
     // Análise de sentimento da mensagem atual
     const currentSentiment = await analyzeSentiment(userContent);
+    // Inferência do estilo de interação
+    const inferredStyle = await inferInteractionStyle(userContent);
 
-    // Atualiza o perfil do usuário com o novo sentimento
+    // Atualiza o perfil do usuário com o novo sentimento e estilo de interação
     const updatedProfile = {
       ...userProfile,
       sentiment: {
         average: currentSentiment, // Simplificado por enquanto
         trend: 'stable' // Simplificado por enquanto
-      }
+      },
+      interaction_style: inferredStyle
     };
     await updateUserProfile(userId, updatedProfile);
 
@@ -70,6 +74,9 @@ export default async function processMessage(message) {
 
     if (userProfile) {
       dynamicPrompt.content += `\n\n--- Sobre o usuário ---\n${userProfile.summary || ''}\nSentimento: ${userProfile.sentiment?.average || 'neutro'}`;
+      if (userProfile.interaction_style) {
+        dynamicPrompt.content += `\nSeu estilo de comunicação deve ser: formalidade ${userProfile.interaction_style.formality}, humor ${userProfile.interaction_style.humor}, tom ${userProfile.interaction_style.tone}, verbosidade ${userProfile.interaction_style.verbosity}.`;
+      }
     }
 
     messages.push({ role: 'user', content: userContent });
@@ -88,6 +95,7 @@ export default async function processMessage(message) {
 
 async function toolCall(messages, response, tools, from, id, userContent) {
   const newMessages = messages;
+  let directCommunicationOccurred = false; // Flag to track if a direct communication tool was used
   if (response.message.function_call) {
     response.message.tool_calls = [
       {
@@ -113,6 +121,7 @@ async function toolCall(messages, response, tools, from, id, userContent) {
       } else if (toolCall.function.name === 'send_message') {
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Mensagem enviada ao usuário: "${args.content}"` });
         await sendMessage(from, args.content);
+        directCommunicationOccurred = true; // Set flag
       } else if (toolCall.function.name === 'analyze_image') {
         const analysis = await analyzeImage({ id, prompt: args.prompt });
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: analysis });
@@ -146,10 +155,16 @@ async function toolCall(messages, response, tools, from, id, userContent) {
         if (audioResult.success) {
           await sendPtt(from, audioResult.audioBuffer, id);
           newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Áudio gerado e enviado: "${args.textToSpeak}"` });
+          directCommunicationOccurred = true; // Set flag
         } else {
           newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Erro ao gerar áudio: ${audioResult.error}` });
         }
       } 
+    }
+
+    // If a direct communication tool was used, we are done with this turn.
+    if (directCommunicationOccurred) {
+      return newMessages;
     }
 
     const newResponse = await chatAi(newMessages);
