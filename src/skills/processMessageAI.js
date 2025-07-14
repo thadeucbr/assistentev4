@@ -55,6 +55,12 @@ export default async function processMessage(message) {
     // Inferência do estilo de interação
     const inferredStyle = await inferInteractionStyle(userContent);
 
+    // Se a inferência de estilo falhou e retornou conteúdo bruto, envie-o ao usuário
+    if (inferredStyle.rawContent && inferredStyle.rawContent.trim().length > 0) {
+      await sendMessage(data.from, inferredStyle.rawContent);
+      return; // Encerra o processamento para evitar respostas duplicadas
+    }
+
     // Atualiza o perfil do usuário com o novo sentimento e estilo de interação
     const updatedProfile = {
       ...userProfile,

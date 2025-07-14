@@ -21,13 +21,15 @@ Exemplo de resposta JSON:
 };
 
 export default async function inferInteractionStyle(userMessage) {
+  let rawContent = ''; // Declare outside try block
   try {
     const messages = [
       SYSTEM_PROMPT,
       { role: 'user', content: userMessage }
     ];
     const response = await chatAi(messages, []);
-    const inferredStyle = JSON.parse(response.message.content);
+    rawContent = response.message.content; // Assign here
+    const inferredStyle = JSON.parse(rawContent); // Use rawContent here
     return inferredStyle;
   } catch (error) {
     console.error('Erro ao inferir estilo de interação:', error);
@@ -35,7 +37,8 @@ export default async function inferInteractionStyle(userMessage) {
       formality: 'unknown',
       humor: 'unknown',
       tone: 'unknown',
-      verbosity: 'unknown'
+      verbosity: 'unknown',
+      rawContent: rawContent // Return rawContent here
     };
   }
 }
