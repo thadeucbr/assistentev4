@@ -3,12 +3,12 @@ import tools from './functions.js';
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'mistral';
 
-export default async function ollamaChat(chatMessages) { 
+export default async function ollamaChat(chatMessages, toolsParam) { 
   // console.log('ollamaChat', chatMessages);
   const body = {
     model: OLLAMA_MODEL,
     messages: chatMessages,
-    tools: tools,
+    tools: toolsParam || tools,
     stream: false
   };
 

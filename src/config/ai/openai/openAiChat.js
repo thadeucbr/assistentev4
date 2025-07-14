@@ -22,7 +22,7 @@ function sanitizeMessages(messages) {
     });
 }
 
-export default async function openAiChat(chatMessages) {
+export default async function openAiChat(chatMessages, toolsParam) {
   console.log('openAiChat', chatMessages);
   chatMessages = sanitizeMessages(chatMessages);
   if (!OPENAI_KEY) {
@@ -32,7 +32,7 @@ export default async function openAiChat(chatMessages) {
   const body = {
     model: OPENAI_MODEL,
     messages: chatMessages,
-    functions: tools,
+    functions: toolsParam || tools,
     function_call: 'auto'
   };
   const response = await fetch(OPENAI_URL, {
