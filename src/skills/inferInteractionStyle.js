@@ -2,7 +2,7 @@ import chatAi from '../config/ai/chat.ai.js';
 
 const SYSTEM_PROMPT = {
   role: 'system',
-  content: `Você é um analista de estilo de comunicação. Sua tarefa é analisar a mensagem do usuário e inferir seu estilo de interação em termos de formalidade, humor, tom e verbosidade. Responda APENAS com um objeto JSON contendo essas inferências.
+  content: `Você é um analista de estilo de comunicação. Sua tarefa é analisar a mensagem do usuário e inferir seu estilo de interação em termos de formalidade, humor, tom e verbosidade. Sua resposta DEVE ser APENAS um objeto JSON, sem nenhum texto adicional, e DEVE ser encapsulada em um bloco de código markdown (```json...```).
 
 Exemplos de formalidade: 'formal', 'informal', 'neutro'.
 Exemplos de humor: 'sarcastic', 'funny', 'direct', 'none'.
@@ -12,12 +12,14 @@ Exemplos de verbosidade: 'concise', 'detailed'.
 Se não conseguir inferir uma característica, use 'unknown'.
 
 Exemplo de resposta JSON:
+```json
 {
   "formality": "informal",
   "humor": "sarcastic",
   "tone": "friendly",
   "verbosity": "concise"
-}`
+}
+```
 };
 
 export default async function inferInteractionStyle(userMessage) {
@@ -27,8 +29,16 @@ export default async function inferInteractionStyle(userMessage) {
       { role: 'user', content: userMessage }
     ];
     const response = await chatAi(messages);
-    const inferredStyle = JSON.parse(response.message.content);
-    return inferredStyle;
+    const rawContent = response.message.content;
+    // Extract JSON from markdown code block
+    const jsonMatch = rawContent.match(/```json\n([\s\S]*?)\n```/);
+    if (jsonMatch && jsonMatch[1]) {
+      const inferredStyle = JSON.parse(jsonMatch[1]);
+      return inferredStyle;
+    } else {
+      console.error('Erro: Resposta do AI não contém JSON válido em bloco de código markdown:', rawContent);
+      throw new Error('Invalid AI response format');
+    }
   } catch (error) {
     console.error('Erro ao inferir estilo de interação:', error);
     return {
