@@ -2,7 +2,7 @@ import chatAi from '../config/ai/chat.ai.js';
 
 const SYSTEM_PROMPT = {
   role: 'system',
-  content: `Você é um analista de estilo de comunicação. Sua tarefa é analisar a mensagem do usuário e inferir seu estilo de interação em termos de formalidade, humor, tom e verbosidade. Sua resposta DEVE ser APENAS um objeto JSON, sem nenhum texto adicional, e DEVE ser encapsulada em um bloco de código markdown (```json...```).
+  content: `Você é um analista de estilo de comunicação. Sua tarefa é analisar a mensagem do usuário e inferir seu estilo de interação em termos de formalidade, humor, tom e verbosidade. Sua resposta DEVE ser APENAS um objeto JSON.
 
 Exemplos de formalidade: 'formal', 'informal', 'neutro'.
 Exemplos de humor: 'sarcastic', 'funny', 'direct', 'none'.
@@ -12,14 +12,13 @@ Exemplos de verbosidade: 'concise', 'detailed'.
 Se não conseguir inferir uma característica, use 'unknown'.
 
 Exemplo de resposta JSON:
-```json
 {
   "formality": "informal",
   "humor": "sarcastic",
   "tone": "friendly",
   "verbosity": "concise"
 }
-```
+`
 };
 
 export default async function inferInteractionStyle(userMessage) {
