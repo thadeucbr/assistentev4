@@ -28,6 +28,7 @@ export default async function inferInteractionStyle(userMessage) {
       { role: 'user', content: userMessage }
     ];
     const response = await chatAi(messages);
+    console.log('Raw AI response:', JSON.stringify(response, null, 2)); // Log the full response
     const rawContent = response.message.content;
     // Extract JSON from markdown code block
     const jsonMatch = rawContent.match(/```json\n([\s\S]*?)\n```/);
