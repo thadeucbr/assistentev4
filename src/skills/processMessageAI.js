@@ -22,6 +22,7 @@ function cosineSimilarity(vecA, vecB) {
 }
 
 import sendMessage from '../whatsapp/sendMessage.js';
+import simulateTyping from '../whatsapp/simulateTyping.js'; // Importar simulateTyping
 
 import ollama from 'ollama';
 import { getUserContext, updateUserContext } from '../repository/contextRepository.js';
@@ -76,6 +77,7 @@ export default async function processMessage(message) {
     const userContent = (data.body || (data.type === 'image' ? 'Analyze this image' : ''))
       .replace(process.env.WHATSAPP_NUMBER, '')
       .trim();
+    await simulateTyping(data.from, true); // Simula digitação antes de processar a mensagem
     const userId = data.from.replace('@c.us', '');
     let { messages } = await getUserContext(userId); // This 'messages' is our STM
     const userProfile = await getUserProfile(userId);
@@ -196,6 +198,7 @@ ${ltmContext}`;
     if ((response.message.tool_calls && response.message.tool_calls.length > 0) || response.message.function_call) {
       messages = await toolCall(messages, response, tools, data.from, data.id, userContent);
     }
+    await simulateTyping(data.from, false); // Simula digitação finalizada
     await updateUserContext(userId, { messages });
     LtmService.summarizeAndStore(userId, messages.map((m) => m.content).join('\n'));
     await updateUserProfileSummary(userId, messages);
