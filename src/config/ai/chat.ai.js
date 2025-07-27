@@ -4,20 +4,16 @@ export default async function chatAi(chatMessages, tools) {
   const provider = process.env.AI_PROVIDER;
   if (provider === 'ollama') {
     try {
-      const ollamaResponse = await ollamaChat(chatMessages, tools);
-      return { message: ollamaResponse.message };
+      return await ollamaChat(chatMessages, tools);
     } catch (err) {
-      const openaiResponse = await openAiChat(chatMessages, tools);
-      return { message: openaiResponse.message };
+      return await openAiChat(chatMessages, tools);
     }
   }
   if (provider === 'openai') {
     try {
-      const openaiResponse = await openAiChat(chatMessages, tools);
-      return { message: openaiResponse.message };
+      return await openAiChat(chatMessages, tools);
     } catch (err) {
-      const ollamaResponse = await ollamaChat(chatMessages, tools);
-      return { message: ollamaResponse.message };
+      return await ollamaChat(chatMessages, tools);
     }
   }
 }
