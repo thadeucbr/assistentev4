@@ -16,8 +16,7 @@ async function testChromaConnection() {
 
   try {
     const client = new ChromaClient({
-      host: host,
-      port: port,
+      path: `http://${host}:${port}`,
     });
 
     // Tenta listar as coleções para verificar a conexão inicial
