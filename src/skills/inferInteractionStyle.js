@@ -38,7 +38,6 @@ export default async function inferInteractionStyle(userMessage) {
       humor: 'unknown',
       tone: 'unknown',
       verbosity: 'unknown',
-      rawContent: rawContent // Return rawContent here
     };
   }
 }

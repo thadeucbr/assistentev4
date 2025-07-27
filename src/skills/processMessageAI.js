@@ -43,7 +43,12 @@ const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
 
 const SYSTEM_PROMPT = {
   role: 'system',
-  content: `Você é um assistente de IA. Para se comunicar com o usuário, você DEVE OBRIGATORIAMENTE usar a função 'send_message'. NUNCA responda diretamente com texto no campo 'content'. Todo o texto para o usuário final deve ser encapsulado na função 'send_message'. Você pode chamar a função 'send_message' várias vezes em sequência para quebrar suas respostas em mensagens menores e mais dinâmicas.
+  content: `Você é um assistente de IA. Sua principal forma de comunicação com o usuário é através da função 'send_message'.
+
+**REGRAS CRÍTICAS PARA COMUNICAÇÃO:**
+1. **SEMPRE USE 'send_message':** Para qualquer texto que você queira enviar ao usuário, você DEVE OBRIGATORIAMENTE usar a função 'send_message'. NUNCA responda diretamente com texto no campo 'content' da sua resposta principal.
+2. **Múltiplas Mensagens:** Você pode chamar a função 'send_message' várias vezes em sequência para quebrar suas respostas em mensagens menores e mais dinâmicas, se apropriado.
+3. **NÃO RESPONDA DIRETAMENTE:** Se você tiver uma resposta para o usuário, mas não usar 'send_message', sua resposta NÃO SERÁ ENTREGUE. Isso é um erro crítico.
 
 Para buscar informações na web, siga este processo em duas etapas:
 1. **Descubra:** Use a função 'web_search' com uma query de busca (ex: "melhores restaurantes em São Paulo") para encontrar URLs relevantes.
@@ -79,10 +84,10 @@ export default async function processMessage(message) {
     const inferredStyle = await inferInteractionStyle(userContent);
 
     // Se a inferência de estilo falhou e retornou conteúdo bruto, envie-o ao usuário
-    if (inferredStyle.rawContent && inferredStyle.rawContent.trim().length > 0) {
-      await sendMessage(data.from, inferredStyle.rawContent);
-      return; // Encerra o processamento para evitar respostas duplicadas
-    }
+    // if (inferredStyle.rawContent && inferredStyle.rawContent.trim().length > 0) {
+    //   await sendMessage(data.from, inferredStyle.rawContent);
+    //   return; // Encerra o processamento para evitar respostas duplicadas
+    // }
 
     // Atualiza o perfil do usuário com o novo sentimento e estilo de interação
     const updatedProfile = {
@@ -268,9 +273,9 @@ async function toolCall(messages, response, tools, from, id, userContent) {
     }
 
     // Fallback for when the model forgets to use the send_message tool
-    if (newResponse.message.content && newResponse.message.content.trim().length > 0) {
-      await sendMessage(from, newResponse.message.content);
-    }
+    // if (newResponse.message.content && newResponse.message.content.trim().length > 0) {
+    //   await sendMessage(from, newResponse.message.content);
+    // }
 
     return newMessages;
   }
