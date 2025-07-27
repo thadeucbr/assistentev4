@@ -1,3 +1,4 @@
+import LtmService from '../services/LtmService.js';
 import sendImage from '../whatsapp/sendImage.js';
 import sendMessage from '../whatsapp/sendMessage.js';
 import generateImage from './generateImage.js';
@@ -49,6 +50,7 @@ export default async function processMessage(message) {
     const userId = data.from.replace('@c.us', '');
     let { messages } = await getUserContext(userId);
     const userProfile = await getUserProfile(userId);
+    const ltmContext = await LtmService.getRelevantContext(userId, userContent);
 
     // Análise de sentimento da mensagem atual
     const currentSentiment = await analyzeSentiment(userContent);
@@ -79,10 +81,22 @@ export default async function processMessage(message) {
     };
 
     if (userProfile) {
-      dynamicPrompt.content += `\n\n--- Sobre o usuário ---\n${userProfile.summary || ''}\nSentimento: ${userProfile.sentiment?.average || 'neutro'}`;
+      dynamicPrompt.content += `
+
+--- User Profile ---
+${userProfile.summary || ''}
+Sentiment: ${userProfile.sentiment?.average || 'neutral'}`;
       if (userProfile.interaction_style) {
-        dynamicPrompt.content += `\nSeu estilo de comunicação deve ser: formalidade ${userProfile.interaction_style.formality}, humor ${userProfile.interaction_style.humor}, tom ${userProfile.interaction_style.tone}, verbosidade ${userProfile.interaction_style.verbosity}.`;
+        dynamicPrompt.content += `
+Your communication style should be: formality ${userProfile.interaction_style.formality}, humor ${userProfile.interaction_style.humor}, tone ${userProfile.interaction_style.tone}, verbosity ${userProfile.interaction_style.verbosity}.`;
       }
+    }
+
+    if (ltmContext) {
+      dynamicPrompt.content += `
+
+--- Relevant Previous Conversations ---
+${ltmContext}`;
     }
 
     messages.push({ role: 'user', content: userContent });
@@ -95,6 +109,7 @@ export default async function processMessage(message) {
       messages = await toolCall(messages, response, tools, data.from, data.id, userContent);
     }
     await updateUserContext(userId, { messages });
+    LtmService.summarizeAndStore(userId, messages.map((m) => m.content).join('\n'));
     await updateUserProfileSummary(userId, messages);
   }
 }
