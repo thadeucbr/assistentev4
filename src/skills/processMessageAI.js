@@ -22,6 +22,8 @@ function cosineSimilarity(vecA, vecB) {
 }
 
 import sendMessage from '../whatsapp/sendMessage.js';
+import simulateTyping from '../whatsapp/simulateTyping.js'; // Importar simulateTyping
+
 import generateImage from './generateImage.js';
 import analyzeImage from './analyzeImage.js';
 import ollama from 'ollama';
@@ -79,6 +81,7 @@ export default async function processMessage(message) {
     const ltmContext = await LtmService.getRelevantContext(userId, userContent);
 
     // Análise de sentimento da mensagem atual
+    await simulateTyping(data.from, true); // Simulate typing before processing
     const currentSentiment = await analyzeSentiment(userContent);
     // Inferência do estilo de interação
     const inferredStyle = await inferInteractionStyle(userContent);
