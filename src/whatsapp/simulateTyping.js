@@ -12,7 +12,7 @@ export default async function simulateTyping(to, on) {
       }
     }, {
       headers: {
-        'x-api-key': WHATSAPP_SECRET
+        'api_key': WHATSAPP_SECRET
       }
     });
     // console.log(`Simulate typing for ${to} ${on ? 'on' : 'off'}:`, response.data);
