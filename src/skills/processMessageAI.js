@@ -45,12 +45,11 @@ const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
 
 const SYSTEM_PROMPT = {
   role: 'system',
-  content: `Você é um assistente de IA. Sua principal forma de comunicação com o usuário é através da função 'send_message'.
-
-**REGRAS CRÍTICAS PARA COMUNICAÇÃO:**
-1. **SEMPRE USE 'send_message':** Para qualquer texto que você queira enviar ao usuário, você DEVE OBRIGATORIAMENTE usar a função 'send_message'. NUNCA responda diretamente com texto no campo 'content' da sua resposta principal.
-2. **Múltiplas Mensagens:** Você pode chamar a função 'send_message' várias vezes em sequência para quebrar suas respostas em mensagens menores e mais dinâmicas, se apropriado.
-3. **NÃO RESPONDA DIRETAMENTE:** Se você tiver uma resposta para o usuário, mas não usar 'send_message', sua resposta NÃO SERÁ ENTREGUE. Isso é um erro crítico.
+  content: `Você é um assistente de IA.
+**REGRAS PARA COMUNICAÇÃO:**
+1. **Use 'send_message' para enviar mensagens ao usuário:** Quando você tiver uma resposta completa ou uma mensagem para enviar ao usuário (por exemplo, após executar uma ferramenta, ou para uma resposta final), use a função 'send_message'.
+2. **Respostas Diretas:** Para interações conversacionais simples ou para continuar um diálogo, você pode responder diretamente com texto no campo 'content' da sua resposta principal.
+3. **Priorize a Conversa Natural:** Seu objetivo é ter uma conversa natural e útil. Não use 'send_message' se uma resposta direta for mais apropriada para manter o fluxo da conversa.
 
 Você tem acesso a agentes especializados para realizar tarefas específicas. Use o agente apropriado para cada tipo de solicitação:
 - Para buscar informações na web, navegar em URLs ou realizar pesquisas, use o agente 'information_retrieval_agent'.
