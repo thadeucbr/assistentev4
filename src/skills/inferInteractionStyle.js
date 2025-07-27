@@ -28,6 +28,7 @@ export default async function inferInteractionStyle(userMessage) {
     tone: 'unknown',
     verbosity: 'unknown',
   };
+  let response = null; // Declare response outside the loop
 
   for (let i = 0; i < MAX_RETRIES; i++) {
     try {
@@ -35,7 +36,7 @@ export default async function inferInteractionStyle(userMessage) {
         SYSTEM_PROMPT,
         { role: 'user', content: userMessage }
       ];
-      const response = await chatAi(messages, []);
+      response = await chatAi(messages, []); // Assign to the outer scope variable
       const rawContent = response.message.content;
       inferredStyle = JSON.parse(rawContent);
       return inferredStyle; // Return immediately on success
@@ -45,6 +46,8 @@ export default async function inferInteractionStyle(userMessage) {
       if (i === MAX_RETRIES - 1) {
         console.error(`Última tentativa falhou. Conteúdo recebido:`, response?.message?.content);
       }
+      // Add a small delay before retrying
+      await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
     }
   }
   console.warn('Todas as tentativas de inferir estilo de interação falharam. Usando estilo padrão.');

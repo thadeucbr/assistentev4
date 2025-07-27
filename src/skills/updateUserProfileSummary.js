@@ -42,12 +42,14 @@ export default async function updateUserProfileSummary(userId, conversationHisto
       SUMMARY_PROMPT,
       ...conversationHistory
     ];
-    const MAX_RETRIES = 3;
-    let parsedSummary = {};
-    let success = false;
+    let response = null; // Declare response outside the loop
 
     for (let i = 0; i < MAX_RETRIES; i++) {
-      const response = await chatAi(messages, []);
+      const currentMessages = [
+        SUMMARY_PROMPT,
+        ...conversationHistory
+      ];
+      response = await chatAi(currentMessages, []);
       console.log(`Tentativa ${i + 1} - Conteúdo completo da resposta do chatAi para o resumo do perfil:`, response.message);
       try {
         parsedSummary = JSON.parse(response.message.content);
@@ -58,8 +60,11 @@ export default async function updateUserProfileSummary(userId, conversationHisto
         console.error(`Tentativa ${i + 1} - Conteúdo recebido (para parse):`, response.message.content);
         // If it's the last retry and still failing, prepare a fallback
         if (i === MAX_RETRIES - 1) {
+          const userProfile = await getUserProfile(userId); // Get userProfile here for fallback
           parsedSummary.profile_summary = response.message.content && response.message.content.trim() !== '' ? response.message.content : userProfile?.summary || '';
         }
+        // Add a small delay before retrying
+        await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
       }
     }
 
