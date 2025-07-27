@@ -8,14 +8,15 @@ async function getVectorStore(userId) {
   const embeddings = new OpenAIEmbeddings();
   const userStorePath = `${VECTOR_STORE_PATH}/${userId}`;
 
-  // Ensure the base directory exists
-  await fs.mkdir(VECTOR_STORE_PATH, { recursive: true });
+  // Ensure the user-specific directory exists
+  await fs.mkdir(userStorePath, { recursive: true });
 
-  if (await fs.access(userStorePath).then(() => true).catch(() => false)) {
-    // Load the existing vector store
+  try {
+    // Try to load the existing vector store
     return await HNSWLib.load(userStorePath, embeddings);
-  } else {
-    // Create a new vector store (it will be saved when documents are added)
+  } catch (error) {
+    // If loading fails (e.g., directory exists but no store, or corrupted), create a new one
+    console.warn(`Could not load vector store for user ${userId}. Creating a new one. Error: ${error.message}`);
     return new HNSWLib(embeddings, {});
   }
 }
