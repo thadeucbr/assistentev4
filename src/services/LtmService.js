@@ -1,14 +1,12 @@
-import { ChromaClient } from 'chromadb';
+import chroma from '../lib/chroma.js';
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { Chroma } from '@langchain/community/vectorstores/chroma';
-
-const chromaClient = new ChromaClient({ path: process.env.CHROMA_URL });
 
 const LtmService = {
   async getRelevantContext(userId, message) {
     const vectorStore = new Chroma(new OpenAIEmbeddings(), {
       collectionName: `context_${userId}`,
-      client: chromaClient,
+      client: chroma,
     });
 
     const response = await vectorStore.similaritySearch(message, 4);
@@ -18,7 +16,7 @@ const LtmService = {
   async summarizeAndStore(userId, conversation) {
     const vectorStore = new Chroma(new OpenAIEmbeddings(), {
       collectionName: `context_${userId}`,
-      client: chromaClient,
+      client: chroma,
     });
 
     await vectorStore.addDocuments([
