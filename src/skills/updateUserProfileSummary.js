@@ -38,10 +38,14 @@ Se não houver informações suficientes para preencher um campo, use valores pa
 
 export default async function updateUserProfileSummary(userId, conversationHistory) {
   try {
+    const MAX_RETRIES = 3; // Moved MAX_RETRIES here
+    const userProfile = await getUserProfile(userId); // Get userProfile here
     const messages = [
       SUMMARY_PROMPT,
       ...conversationHistory
     ];
+    let parsedSummary = {};
+    let success = false;
     let response = null; // Declare response outside the loop
 
     for (let i = 0; i < MAX_RETRIES; i++) {
@@ -60,7 +64,6 @@ export default async function updateUserProfileSummary(userId, conversationHisto
         console.error(`Tentativa ${i + 1} - Conteúdo recebido (para parse):`, response.message.content);
         // If it's the last retry and still failing, prepare a fallback
         if (i === MAX_RETRIES - 1) {
-          const userProfile = await getUserProfile(userId); // Get userProfile here for fallback
           parsedSummary.profile_summary = response.message.content && response.message.content.trim() !== '' ? response.message.content : userProfile?.summary || '';
         }
         // Add a small delay before retrying
@@ -72,7 +75,6 @@ export default async function updateUserProfileSummary(userId, conversationHisto
       console.warn('Todas as tentativas de obter JSON válido para o resumo do perfil falharam. Usando fallback.');
     }
 
-    const userProfile = await getUserProfile(userId);
     const updatedProfile = {
       ...userProfile,
       summary: parsedSummary.profile_summary || userProfile?.summary || '',
