@@ -1,5 +1,26 @@
 import LtmService from '../services/LtmService.js';
 import sendImage from '../whatsapp/sendImage.js';
+import { embeddingModel, chatModel } from '../lib/langchain.js'; // Importar embeddingModel e chatModel
+
+const MAX_STM_MESSAGES = 10; // Número máximo de mensagens na STM
+const SUMMARIZE_THRESHOLD = 7; // Limite para acionar a sumarização (ex: se tiver mais de 7 mensagens, sumariza as mais antigas)
+
+// Função auxiliar para calcular similaridade de cosseno
+function cosineSimilarity(vecA, vecB) {
+  let dotProduct = 0;
+  let magnitudeA = 0;
+  let magnitudeB = 0;
+  for (let i = 0; i < vecA.length; i++) {
+    dotProduct += vecA[i] * vecB[i];
+    magnitudeA += vecA[i] * vecA[i];
+    magnitudeB += vecB[i] * vecB[i];
+  }
+  magnitudeA = Math.sqrt(magnitudeA);
+  magnitudeB = Math.sqrt(magnitudeB);
+  if (magnitudeA === 0 || magnitudeB === 0) return 0;
+  return dotProduct / (magnitudeA * magnitudeB);
+}
+
 import sendMessage from '../whatsapp/sendMessage.js';
 import generateImage from './generateImage.js';
 import analyzeImage from './analyzeImage.js';
@@ -48,7 +69,7 @@ export default async function processMessage(message) {
       .replace(process.env.WHATSAPP_NUMBER, '')
       .trim();
     const userId = data.from.replace('@c.us', '');
-    let { messages } = await getUserContext(userId);
+    let { messages } = await getUserContext(userId); // This 'messages' is our STM
     const userProfile = await getUserProfile(userId);
     const ltmContext = await LtmService.getRelevantContext(userId, userContent);
 
@@ -73,6 +94,58 @@ export default async function processMessage(message) {
       interaction_style: inferredStyle
     };
     await updateUserProfile(userId, updatedProfile);
+
+    // --- STM Management: Reranking and Summarization ---
+    let currentSTM = [...messages]; // Create a copy to work with
+
+    // If STM is getting too large, apply reranking and summarization
+    if (currentSTM.length >= MAX_STM_MESSAGES) {
+      const userEmbedding = await embeddingModel.embedQuery(userContent);
+
+      const messagesWithEmbeddings = await Promise.all(
+        currentSTM.map(async (msg) => {
+          if (msg.role === 'user' || msg.role === 'assistant') {
+            const embedding = await embeddingModel.embedQuery(msg.content);
+            return { ...msg, embedding };
+          }
+          return msg; // Keep system/tool messages as is, without embedding
+        })
+      );
+
+      // Calculate similarity and sort
+      const rankedMessages = messagesWithEmbeddings
+        .map((msg) => {
+          if (msg.embedding) {
+            return { ...msg, similarity: cosineSimilarity(userEmbedding, msg.embedding) };
+          }
+          return { ...msg, similarity: -1 }; // Non-embeddable messages get low similarity
+        })
+        .sort((a, b) => b.similarity - a.similarity); // Sort by similarity descending
+
+      // Determine messages to keep in STM (relevant + recent)
+      const relevantMessages = rankedMessages.slice(0, SUMMARIZE_THRESHOLD);
+      const recentMessages = currentSTM.slice(-MAX_STM_MESSAGES + SUMMARIZE_THRESHOLD);
+
+      // Combine and deduplicate (if a message is both recent and relevant, keep one instance)
+      const combinedMessages = [...new Set([...relevantMessages, ...recentMessages])];
+
+      // Identify messages to summarize (those not kept in STM)
+      const keptMessageContents = new Set(combinedMessages.map(m => m.content));
+      const messagesToSummarize = currentSTM.filter(m => !keptMessageContents.has(m.content));
+
+      // Summarize discarded messages and send to LTM
+      if (messagesToSummarize.length > 0) {
+        const summaryContent = messagesToSummarize.map(m => m.content).join('\n');
+        const summaryResponse = await chatModel.invoke([
+          { role: 'system', content: 'Resuma o seguinte trecho de conversa de forma concisa, focando nos fatos e informações importantes.' },
+          { role: 'user', content: summaryContent }
+        ]);
+        await LtmService.summarizeAndStore(userId, summaryResponse.content);
+      }
+
+      // Update the STM with the pruned and reranked messages
+      messages = combinedMessages.map(m => ({ role: m.role, content: m.content })); // Clean up embeddings/similarity
+    }
 
     // Constrói o prompt dinâmico
     const dynamicPrompt = {
