@@ -2,7 +2,7 @@ import chatAi from '../config/ai/chat.ai.js';
 
 const SYSTEM_PROMPT = {
   role: 'system',
-  content: `Você é um analista de estilo de comunicação. Sua tarefa é analisar a mensagem do usuário e inferir seu estilo de interação em termos de formalidade, humor, tom e verbosidade. Responda APENAS com um objeto JSON contendo essas inferências.
+  content: `Você é um analista de estilo de comunicação. Sua tarefa é analisar a mensagem do usuário e inferir seu estilo de interação em termos de formalidade, humor, tom e verbosidade. Sua resposta DEVE ser APENAS um objeto JSON, sem nenhum texto adicional.
 
 Exemplos de formalidade: 'formal', 'informal', 'neutro'.
 Exemplos de humor: 'sarcastic', 'funny', 'direct', 'none'.
@@ -21,21 +21,35 @@ Exemplo de resposta JSON:
 };
 
 export default async function inferInteractionStyle(userMessage) {
-  try {
-    const messages = [
-      SYSTEM_PROMPT,
-      { role: 'user', content: userMessage }
-    ];
-    const response = await chatAi(messages);
-    const inferredStyle = JSON.parse(response.message.content);
-    return inferredStyle;
-  } catch (error) {
-    console.error('Erro ao inferir estilo de interação:', error);
-    return {
-      formality: 'unknown',
-      humor: 'unknown',
-      tone: 'unknown',
-      verbosity: 'unknown'
-    };
+  const MAX_RETRIES = 3;
+  let inferredStyle = {
+    formality: 'unknown',
+    humor: 'unknown',
+    tone: 'unknown',
+    verbosity: 'unknown',
+  };
+  let response = null; // Declare response outside the loop
+
+  for (let i = 0; i < MAX_RETRIES; i++) {
+    try {
+      const messages = [
+        SYSTEM_PROMPT,
+        { role: 'user', content: userMessage }
+      ];
+      response = await chatAi(messages, []); // Assign to the outer scope variable
+      const rawContent = response.message.content;
+      inferredStyle = JSON.parse(rawContent);
+      return inferredStyle; // Return immediately on success
+    } catch (error) {
+      console.error(`Tentativa ${i + 1} - Erro ao inferir estilo de interação:`, error);
+      // If it's the last retry, log the content that caused the error
+      if (i === MAX_RETRIES - 1) {
+        console.error(`Última tentativa falhou. Conteúdo recebido:`, response?.message?.content);
+      }
+      // Add a small delay before retrying
+      await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
+    }
   }
+  console.warn('Todas as tentativas de inferir estilo de interação falharam. Usando estilo padrão.');
+  return inferredStyle; // Return default/last inferred style after all retries
 }

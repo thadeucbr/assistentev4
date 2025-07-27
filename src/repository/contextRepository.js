@@ -8,8 +8,16 @@ export async function getUserContext(userId) {
   return context ? context.context : { messages: [] };
 }
 
+const MAX_MESSAGES = 10; // Define o tamanho da janela deslizante
+
 export async function updateUserContext(userId, contextData) {
   const db = await connectToDb();
+
+  // Aplica a janela deslizante
+  if (contextData.messages.length > MAX_MESSAGES) {
+    contextData.messages = contextData.messages.slice(-MAX_MESSAGES);
+  }
+
   await db.collection(COLLECTION).updateOne(
     { userId },
     { $set: { context: contextData, updatedAt: new Date() } },

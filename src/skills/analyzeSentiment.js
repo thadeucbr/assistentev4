@@ -12,7 +12,7 @@ export default async function analyzeSentiment(text) {
       SENTIMENT_ANALYSIS_PROMPT,
       { role: 'user', content: text }
     ];
-    const response = await chatAi(messages);
+    const response = await chatAi(messages, []);
     const sentiment = response.message.content.toLowerCase().trim();
 
     if (['positivo', 'neutro', 'negativo'].includes(sentiment)) {
