@@ -21,23 +21,32 @@ Exemplo de resposta JSON:
 };
 
 export default async function inferInteractionStyle(userMessage) {
-  let rawContent = ''; // Declare outside try block
-  try {
-    const messages = [
-      SYSTEM_PROMPT,
-      { role: 'user', content: userMessage }
-    ];
-    const response = await chatAi(messages, []);
-    rawContent = response.message.content; // Assign here
-    const inferredStyle = JSON.parse(rawContent); // Use rawContent here
-    return inferredStyle;
-  } catch (error) {
-    console.error('Erro ao inferir estilo de interação:', error);
-    return {
-      formality: 'unknown',
-      humor: 'unknown',
-      tone: 'unknown',
-      verbosity: 'unknown',
-    };
+  const MAX_RETRIES = 3;
+  let inferredStyle = {
+    formality: 'unknown',
+    humor: 'unknown',
+    tone: 'unknown',
+    verbosity: 'unknown',
+  };
+
+  for (let i = 0; i < MAX_RETRIES; i++) {
+    try {
+      const messages = [
+        SYSTEM_PROMPT,
+        { role: 'user', content: userMessage }
+      ];
+      const response = await chatAi(messages, []);
+      const rawContent = response.message.content;
+      inferredStyle = JSON.parse(rawContent);
+      return inferredStyle; // Return immediately on success
+    } catch (error) {
+      console.error(`Tentativa ${i + 1} - Erro ao inferir estilo de interação:`, error);
+      // If it's the last retry, log the content that caused the error
+      if (i === MAX_RETRIES - 1) {
+        console.error(`Última tentativa falhou. Conteúdo recebido:`, response?.message?.content);
+      }
+    }
   }
+  console.warn('Todas as tentativas de inferir estilo de interação falharam. Usando estilo padrão.');
+  return inferredStyle; // Return default/last inferred style after all retries
 }

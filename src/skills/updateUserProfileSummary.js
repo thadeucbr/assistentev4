@@ -42,16 +42,29 @@ export default async function updateUserProfileSummary(userId, conversationHisto
       SUMMARY_PROMPT,
       ...conversationHistory
     ];
-    const response = await chatAi(messages, []);
-    console.log('Conteúdo completo da resposta do chatAi para o resumo do perfil:', response.message);
+    const MAX_RETRIES = 3;
     let parsedSummary = {};
-    try {
-      parsedSummary = JSON.parse(response.message.content);
-    } catch (jsonError) {
-      console.error('Erro ao fazer parse do JSON do resumo do perfil:', jsonError);
-      console.error('Conteúdo recebido (para parse):', response.message.content);
-      // Se o JSON for inválido, tentamos extrair um resumo simples ou manter o existente
-      parsedSummary.profile_summary = response.message.content && response.message.content.trim() !== '' ? response.message.content : userProfile?.summary || '';
+    let success = false;
+
+    for (let i = 0; i < MAX_RETRIES; i++) {
+      const response = await chatAi(messages, []);
+      console.log(`Tentativa ${i + 1} - Conteúdo completo da resposta do chatAi para o resumo do perfil:`, response.message);
+      try {
+        parsedSummary = JSON.parse(response.message.content);
+        success = true;
+        break;
+      } catch (jsonError) {
+        console.error(`Tentativa ${i + 1} - Erro ao fazer parse do JSON do resumo do perfil:`, jsonError);
+        console.error(`Tentativa ${i + 1} - Conteúdo recebido (para parse):`, response.message.content);
+        // If it's the last retry and still failing, prepare a fallback
+        if (i === MAX_RETRIES - 1) {
+          parsedSummary.profile_summary = response.message.content && response.message.content.trim() !== '' ? response.message.content : userProfile?.summary || '';
+        }
+      }
+    }
+
+    if (!success) {
+      console.warn('Todas as tentativas de obter JSON válido para o resumo do perfil falharam. Usando fallback.');
     }
 
     const userProfile = await getUserProfile(userId);

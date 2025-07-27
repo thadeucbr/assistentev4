@@ -15,6 +15,7 @@
     "@chroma-core/default-embed": "^0.1.8",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@langchain/core": "^0.3.66",
+    "@langchain/ollama": "^0.2.3",
     "@langchain/openai": "^0.6.3",
     "axios": "^1.8.4",
     "dotenv": "^16.4.7",
