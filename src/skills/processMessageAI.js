@@ -103,12 +103,16 @@ export default async function processMessage(message) {
     // --- STM Management: Reranking and Summarization ---
     let currentSTM = [...messages]; // Create a copy to work with
 
-    // If STM is getting too large, apply reranking and summarization
-    if (currentSTM.length >= MAX_STM_MESSAGES) {
+    // Separate hot messages (most recent) and warm messages (older ones)
+    const hotMessages = currentSTM.slice(-SUMMARIZE_THRESHOLD);
+    const warmMessages = currentSTM.slice(0, currentSTM.length - SUMMARIZE_THRESHOLD);
+
+    // If warm messages exist and total STM is getting too large, apply reranking and summarization
+    if (warmMessages.length > 0 && currentSTM.length >= MAX_STM_MESSAGES) {
       const userEmbedding = await embeddingModel.embedQuery(userContent);
 
       const messagesWithEmbeddings = await Promise.all(
-        currentSTM.map(async (msg) => {
+        warmMessages.map(async (msg) => {
           if (msg.role === 'user' || msg.role === 'assistant') {
             const embedding = await embeddingModel.embedQuery(msg.content);
             return { ...msg, embedding };
@@ -117,8 +121,8 @@ export default async function processMessage(message) {
         })
       );
 
-      // Calculate similarity and sort
-      const rankedMessages = messagesWithEmbeddings
+      // Calculate similarity and sort warm messages
+      const rankedWarmMessages = messagesWithEmbeddings
         .map((msg) => {
           if (msg.embedding) {
             return { ...msg, similarity: cosineSimilarity(userEmbedding, msg.embedding) };
@@ -127,16 +131,13 @@ export default async function processMessage(message) {
         })
         .sort((a, b) => b.similarity - a.similarity); // Sort by similarity descending
 
-      // Determine messages to keep in STM (relevant + recent)
-      const relevantMessages = rankedMessages.slice(0, SUMMARIZE_THRESHOLD);
-      const recentMessages = currentSTM.slice(-MAX_STM_MESSAGES + SUMMARIZE_THRESHOLD);
+      // Determine how many warm messages to keep to fit within MAX_STM_MESSAGES
+      const numWarmMessagesToKeep = MAX_STM_MESSAGES - hotMessages.length;
+      const keptWarmMessages = rankedWarmMessages.slice(0, numWarmMessagesToKeep);
 
-      // Combine and deduplicate (if a message is both recent and relevant, keep one instance)
-      const combinedMessages = [...new Set([...relevantMessages, ...recentMessages])];
-
-      // Identify messages to summarize (those not kept in STM)
-      const keptMessageContents = new Set(combinedMessages.map(m => m.content));
-      const messagesToSummarize = currentSTM.filter(m => !keptMessageContents.has(m.content));
+      // Identify messages to summarize (those from warmMessages not kept)
+      const keptMessageContents = new Set(keptWarmMessages.map(m => m.content));
+      const messagesToSummarize = warmMessages.filter(m => !keptMessageContents.has(m.content));
 
       // Summarize discarded messages and send to LTM
       if (messagesToSummarize.length > 0) {
@@ -148,8 +149,12 @@ export default async function processMessage(message) {
         await LtmService.summarizeAndStore(userId, summaryResponse.content);
       }
 
-      // Update the STM with the pruned and reranked messages
-      messages = combinedMessages.map(m => ({ role: m.role, content: m.content })); // Clean up embeddings/similarity
+      // Update the STM with the hot messages and pruned/reranked warm messages
+      messages = [...hotMessages, ...keptWarmMessages.map(m => ({ role: m.role, content: m.content }))];
+
+    } else if (currentSTM.length > MAX_STM_MESSAGES) {
+      // If no warm messages or not enough to trigger reranking, just trim by sliding window
+      messages = currentSTM.slice(-MAX_STM_MESSAGES);
     }
 
     // Constrói o prompt dinâmico
