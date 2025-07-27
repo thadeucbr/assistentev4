@@ -56,7 +56,7 @@ export default async function updateUserProfileSummary(userId, conversationHisto
       response = await chatAi(currentMessages, []);
       console.log(`Tentativa ${i + 1} - Conteúdo completo da resposta do chatAi para o resumo do perfil:`, response.message);
       // Check if content is empty or if tool calls are present (unexpected for this prompt)
-      if (response.message.content && response.message.content.trim() !== '' && !response.message.tool_calls && !response.message.function_call) {
+      if (response.message.content && response.message.content.trim() !== '' && (!response.message.tool_calls || response.message.tool_calls.length === 0) && (!response.message.function_call || Object.keys(response.message.function_call).length === 0)) {
         try {
           parsedSummary = JSON.parse(response.message.content);
           success = true;
