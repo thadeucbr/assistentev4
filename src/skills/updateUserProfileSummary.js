@@ -56,25 +56,20 @@ export default async function updateUserProfileSummary(userId, conversationHisto
       response = await chatAi(currentMessages, []);
       console.log(`Tentativa ${i + 1} - Conteúdo completo da resposta do chatAi para o resumo do perfil:`, response.message);
       // Check if content is empty or if tool calls are present (unexpected for this prompt)
-      if (response.message.content && response.message.content.trim() !== '' && (!response.message.tool_calls || response.message.tool_calls.length === 0) && (!response.message.function_call || Object.keys(response.message.function_call).length === 0)) {
-        try {
-          parsedSummary = JSON.parse(response.message.content);
-          success = true;
-          break;
-        } catch (jsonError) {
-          console.error(`Tentativa ${i + 1} - Erro ao fazer parse do JSON do resumo do perfil:`, jsonError);
-          console.error(`Tentativa ${i + 1} - Conteúdo recebido (para parse):`, response.message.content);
+      try {
+        parsedSummary = JSON.parse(response.message.content);
+        success = true;
+        break;
+      } catch (jsonError) {
+        console.error(`Tentativa ${i + 1} - Erro ao fazer parse do JSON do resumo do perfil:`, jsonError);
+        console.error(`Tentativa ${i + 1} - Conteúdo recebido (para parse):`, response.message.content);
+        // If it's the last retry and still failing, prepare a fallback
+        if (i === MAX_RETRIES - 1) {
+          parsedSummary.profile_summary = response.message.content && response.message.content.trim() !== '' ? response.message.content : userProfile?.summary || '';
         }
-      } else {
-        console.warn(`Tentativa ${i + 1} - Resposta vazia, contém tool_calls, ou não é JSON válido. Conteúdo:`, response.message.content, 'Tool Calls:', response.message.tool_calls, 'Function Call:', response.message.function_call);
+        // Add a small delay before retrying
+        await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
       }
-
-      // If it's the last retry and still failing, prepare a fallback
-      if (i === MAX_RETRIES - 1) {
-        parsedSummary.profile_summary = userProfile?.summary || ''; // Fallback to existing summary
-      }
-      // Add a small delay before retrying
-      await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
     }
 
     if (!success) {
