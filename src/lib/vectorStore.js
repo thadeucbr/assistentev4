@@ -1,29 +1,79 @@
-import { HNSWLib } from '@langchain/community/vectorstores/hnswlib';
 import { OpenAIEmbeddings } from '@langchain/openai';
 import * as fs from 'fs/promises';
 
-const VECTOR_STORE_PATH = './vector_store';
-const EMBEDDING_DIMENSIONS = 3072; // For 'text-embedding-3-large'
+const VECTOR_STORE_DIR = './vector_store';
 
-async function getVectorStore(userId) {
-  const embeddings = new OpenAIEmbeddings();
-  const userStorePath = `${VECTOR_STORE_PATH}/${userId}`;
+// Helper function to calculate cosine similarity
+function cosineSimilarity(vecA, vecB) {
+  let dotProduct = 0;
+  let magnitudeA = 0;
+  let magnitudeB = 0;
+  for (let i = 0; i < vecA.length; i++) {
+    dotProduct += vecA[i] * vecB[i];
+    magnitudeA += vecA[i] * vecA[i];
+    magnitudeB += vecB[i] * vecB[i];
+  }
+  magnitudeA = Math.sqrt(magnitudeA);
+  magnitudeB = Math.sqrt(magnitudeB);
+  if (magnitudeA === 0 || magnitudeB === 0) return 0; // Avoid division by zero
+  return dotProduct / (magnitudeA * magnitudeB);
+}
 
-  // Ensure the user-specific directory exists
-  await fs.mkdir(userStorePath, { recursive: true });
-
+async function loadVectorStore(userId) {
+  const userStorePath = `${VECTOR_STORE_DIR}/${userId}.json`;
   try {
-    // Try to load the existing vector store
-    return await HNSWLib.load(userStorePath, embeddings);
+    const data = await fs.readFile(userStorePath, 'utf8');
+    return JSON.parse(data);
   } catch (error) {
-    // If loading fails (e.g., directory exists but no store, or corrupted), create a new one
-    console.warn(`Could not load vector store for user ${userId}. Creating a new one. Error: ${error.message}`);
-    // When creating a new HNSWLib, explicitly set numDimensions
-    return new HNSWLib(embeddings, {
-      space: "cosine", // or "ip" or "l2"
-      numDimensions: EMBEDDING_DIMENSIONS,
-    });
+    if (error.code === 'ENOENT') {
+      // File not found, return empty store
+      return [];
+    }
+    console.error(`Error loading vector store for user ${userId}:`, error);
+    return [];
   }
 }
 
-export default getVectorStore;
+async function saveVectorStore(userId, store) {
+  const userStorePath = `${VECTOR_STORE_DIR}/${userId}.json`;
+  await fs.mkdir(VECTOR_STORE_DIR, { recursive: true });
+  await fs.writeFile(userStorePath, JSON.stringify(store, null, 2), 'utf8');
+}
+
+const InMemoryVectorStore = {
+  async addDocuments(userId, documents) {
+    const embeddings = new OpenAIEmbeddings();
+    const store = await loadVectorStore(userId);
+
+    for (const doc of documents) {
+      const embedding = await embeddings.embedQuery(doc.pageContent);
+      store.push({
+        pageContent: doc.pageContent,
+        metadata: doc.metadata,
+        embedding: embedding,
+      });
+    }
+    await saveVectorStore(userId, store);
+  },
+
+  async similaritySearch(userId, query, k = 4) {
+    const embeddings = new OpenAIEmbeddings();
+    const store = await loadVectorStore(userId);
+    const queryEmbedding = await embeddings.embedQuery(query);
+
+    const results = store.map(item => ({
+      item: item,
+      similarity: cosineSimilarity(queryEmbedding, item.embedding),
+    }))
+    .sort((a, b) => b.similarity - a.similarity) // Sort by similarity (descending)
+    .slice(0, k) // Take top k results
+    .map(result => ({
+      pageContent: result.item.pageContent,
+      metadata: result.item.metadata,
+    }));
+
+    return results;
+  },
+};
+
+export default InMemoryVectorStore;

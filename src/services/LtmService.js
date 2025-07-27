@@ -1,16 +1,14 @@
-import getVectorStore from '../lib/vectorStore.js';
+import InMemoryVectorStore from '../lib/vectorStore.js';
 import { Document } from '@langchain/core/documents';
 
 const LtmService = {
   async getRelevantContext(userId, message) {
-    const vectorStore = await getVectorStore(userId);
-    const response = await vectorStore.similaritySearch(message, 4);
-    return response.map((r) => r.pageContent).join('\n\n');
+    const results = await InMemoryVectorStore.similaritySearch(userId, message, 4);
+    return results.map((r) => r.pageContent).join('\n\n');
   },
 
   async summarizeAndStore(userId, conversation) {
-    const vectorStore = await getVectorStore(userId);
-    await vectorStore.addDocuments([
+    await InMemoryVectorStore.addDocuments(userId, [
       new Document({
         pageContent: conversation,
         metadata: {
@@ -19,8 +17,6 @@ const LtmService = {
         },
       }),
     ]);
-    // Save the updated vector store to disk
-    await vectorStore.save(`./vector_store/${userId}`);
   },
 };
 
