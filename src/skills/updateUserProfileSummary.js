@@ -43,14 +43,15 @@ export default async function updateUserProfileSummary(userId, conversationHisto
       ...conversationHistory
     ];
     const response = await chatAi(messages, []);
+    console.log('Conteúdo completo da resposta do chatAi para o resumo do perfil:', response.message);
     let parsedSummary = {};
     try {
       parsedSummary = JSON.parse(response.message.content);
     } catch (jsonError) {
       console.error('Erro ao fazer parse do JSON do resumo do perfil:', jsonError);
-      console.error('Conteúdo recebido:', response.message.content);
-      // Fallback para um resumo simples se o JSON for inválido
-      parsedSummary.profile_summary = response.message.content;
+      console.error('Conteúdo recebido (para parse):', response.message.content);
+      // Se o JSON for inválido, tentamos extrair um resumo simples ou manter o existente
+      parsedSummary.profile_summary = response.message.content && response.message.content.trim() !== '' ? response.message.content : userProfile?.summary || '';
     }
 
     const userProfile = await getUserProfile(userId);
