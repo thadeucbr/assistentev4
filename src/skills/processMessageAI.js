@@ -101,6 +101,8 @@ export default async function processMessage(message) {
       },
       interaction_style: inferredStyle
     };
+        await simulateTyping(data.from, true); // Simulate typing before processing
+
     await updateUserProfile(userId, updatedProfile);
 
     // --- STM Management: Reranking and Summarization ---
