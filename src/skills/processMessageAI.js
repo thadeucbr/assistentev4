@@ -232,7 +232,7 @@ export default async function processMessage(message) {
     if ((response.message.tool_calls && response.message.tool_calls.length > 0) || response.message.function_call) {
       stepTime = Date.now();
       console.log(`[ProcessMessage] 🛠️ Executando ferramentas... - ${new Date().toISOString()}`);
-      messages = await toolCall(messages, response, tools, data.from, data.id, userContent);
+      messages = await toolCall(messages, response, tools, data.from, data.id, userContent, data.id);
       console.log(`[ProcessMessage] ✅ Ferramentas executadas (+${Date.now() - stepTime}ms)`);
     }
     
@@ -254,7 +254,7 @@ export default async function processMessage(message) {
   }
 }
 
-async function toolCall(messages, response, tools, from, id, userContent) {
+async function toolCall(messages, response, tools, from, id, userContent, quotedMsgId) {
   const toolStartTime = Date.now();
   console.log(`[ToolCall] 🔧 Iniciando execução de ferramentas - ${new Date().toISOString()}`);
   const newMessages = messages;
@@ -292,7 +292,7 @@ async function toolCall(messages, response, tools, from, id, userContent) {
       } else if (toolCall.function.name === 'send_message') {
         console.log(`[ToolCall] 💬 Enviando mensagem... - ${new Date().toISOString()}`);
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Mensagem enviada ao usuário: "${args.content}"` });
-        await sendMessage(from, args.content);
+        await sendMessage(from, args.content, quotedMsgId, true);
         directCommunicationOccurred = true; // Set flag
         console.log(`[ToolCall] ✅ Mensagem enviada (+${Date.now() - stepTime}ms)`);
       } else if (toolCall.function.name === 'analyze_image') {

@@ -17,7 +17,7 @@ app.post('/webhook', (req, res) => {
   if (BLACK_LIST.includes(req.body.data.from)) {
     return res.status(403).send('Forbidden');
   }
-  processMessage(req.body);
+  processMessage(req.body.data);
   res.send('OK');
 });
 

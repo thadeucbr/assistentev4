@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const sendMessage = async (to, content) => {
+const sendMessage = async (to, content, quotedMsgId = null, sendSeen = true) => {
   const url = `${process.env.WHATSAPP_URL}/sendText`;
 
   const options = {
@@ -14,7 +14,9 @@ const sendMessage = async (to, content) => {
   const data = {
     args: {
       to,
-      content
+      content,
+      quotedMsgId,
+      sendSeen
     }
   };
 
