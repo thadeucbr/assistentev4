@@ -208,6 +208,8 @@ ${ltmContext}`;
     messages.push({ role: 'user', content: userContent });
 
     console.log('[ProcessMessage] 🤖 Enviando mensagem para IA...');
+    // Simulate typing before sending the message
+    await simulateTyping(data.from, true); // Simulate typing before processing
     const chatMessages = [dynamicPrompt, ...messages];
     let response = await chatAi(chatMessages);
     
