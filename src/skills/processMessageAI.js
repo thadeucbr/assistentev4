@@ -1,6 +1,7 @@
 import LtmService from '../services/LtmService.js';
 import sendImage from '../whatsapp/sendImage.js';
 import { embeddingModel, chatModel } from '../lib/langchain.js'; // Importar embeddingModel e chatModel
+import { normalizeAiResponse } from '../utils/aiResponseUtils.js';
 
 const MAX_STM_MESSAGES = 10; // Número máximo de mensagens na STM
 const SUMMARIZE_THRESHOLD = 7; // Limite para acionar a sumarização (ex: se tiver mais de 7 mensagens, sumariza as mais antigas)
@@ -189,6 +190,9 @@ ${ltmContext}`;
 
     const chatMessages = [dynamicPrompt, ...messages];
     let response = await chatAi(chatMessages);
+    
+    // Normalizar a resposta para garantir estrutura consistente
+    response = normalizeAiResponse(response);
 
     messages.push(response.message);
     if ((response.message.tool_calls && response.message.tool_calls.length > 0) || response.message.function_call) {
@@ -275,14 +279,18 @@ async function toolCall(messages, response, tools, from, id, userContent) {
     }
 
     const newResponse = await chatAi(newMessages);
-    newMessages.push(newResponse.message);
-    if ((newResponse.message.tool_calls && newResponse.message.tool_calls.length > 0) || newResponse.message.function_call) {
-      return toolCall(newMessages, newResponse, tools, from, id);
+    
+    // Normalizar a resposta para garantir estrutura consistente
+    const normalizedNewResponse = normalizeAiResponse(newResponse);
+    
+    newMessages.push(normalizedNewResponse.message);
+    if ((normalizedNewResponse.message.tool_calls && normalizedNewResponse.message.tool_calls.length > 0) || normalizedNewResponse.message.function_call) {
+      return toolCall(newMessages, normalizedNewResponse, tools, from, id);
     }
 
     // Fallback for when the model forgets to use the send_message tool
-    // if (newResponse.message.content && newResponse.message.content.trim().length > 0) {
-    //   await sendMessage(from, newResponse.message.content);
+    // if (normalizedNewResponse.message.content && normalizedNewResponse.message.content.trim().length > 0) {
+    //   await sendMessage(from, normalizedNewResponse.message.content);
     // }
 
     return newMessages;

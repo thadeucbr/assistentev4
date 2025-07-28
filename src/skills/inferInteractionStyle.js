@@ -1,4 +1,5 @@
 import chatAi from '../config/ai/chat.ai.js';
+import { retryAiJsonCall } from '../utils/aiResponseUtils.js';
 
 const SYSTEM_PROMPT = {
   role: 'system',
@@ -21,35 +22,39 @@ Exemplo de resposta JSON:
 };
 
 export default async function inferInteractionStyle(userMessage) {
-  const MAX_RETRIES = 3;
-  let inferredStyle = {
+  const defaultStyle = {
     formality: 'unknown',
     humor: 'unknown',
     tone: 'unknown',
     verbosity: 'unknown',
   };
-  let response = null; // Declare response outside the loop
 
-  for (let i = 0; i < MAX_RETRIES; i++) {
-    try {
-      const messages = [
-        SYSTEM_PROMPT,
-        { role: 'user', content: userMessage }
-      ];
-      response = await chatAi(messages, []); // Assign to the outer scope variable
-      const rawContent = response.message.content;
-      inferredStyle = JSON.parse(rawContent);
-      return inferredStyle; // Return immediately on success
-    } catch (error) {
-      console.error(`Tentativa ${i + 1} - Erro ao inferir estilo de interação:`, error);
-      // If it's the last retry, log the content that caused the error
-      if (i === MAX_RETRIES - 1) {
-        console.error(`Última tentativa falhou. Conteúdo recebido:`, response?.message?.content);
-      }
-      // Add a small delay before retrying
-      await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
+  // Função que faz a chamada de IA, recebendo o número da tentativa
+  const makeAiCall = async (attemptNumber) => {
+    let messages = [
+      SYSTEM_PROMPT,
+      { role: 'user', content: userMessage }
+    ];
+
+    // Para retries, adiciona instrução específica sobre o formato JSON
+    if (attemptNumber > 0) {
+      messages.push({
+        role: 'user',
+        content: 'Por favor, responda APENAS com um objeto JSON válido, sem nenhum texto adicional antes ou depois.'
+      });
     }
+
+    return await chatAi(messages, []);
+  };
+
+  // Usar a função de retry com JSON
+  const result = await retryAiJsonCall(makeAiCall, 3, 1000);
+  
+  if (result.success) {
+    console.log('Estilo de interação inferido com sucesso:', result.data);
+    return result.data;
+  } else {
+    console.warn('Todas as tentativas de inferir estilo de interação falharam. Usando estilo padrão.');
+    return defaultStyle;
   }
-  console.warn('Todas as tentativas de inferir estilo de interação falharam. Usando estilo padrão.');
-  return inferredStyle; // Return default/last inferred style after all retries
 }

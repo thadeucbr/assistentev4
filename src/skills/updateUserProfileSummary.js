@@ -1,6 +1,7 @@
 
 import chatAi from '../config/ai/chat.ai.js';
 import { getUserProfile, updateUserProfile } from '../repository/userProfileRepository.js';
+import { retryAiJsonCall } from '../utils/aiResponseUtils.js';
 
 const SUMMARY_PROMPT = {
   role: 'system',
@@ -38,41 +39,42 @@ Se não houver informações suficientes para preencher um campo, use valores pa
 
 export default async function updateUserProfileSummary(userId, conversationHistory) {
   try {
-    const MAX_RETRIES = 3; // Moved MAX_RETRIES here
-    const userProfile = await getUserProfile(userId); // Get userProfile here
-    const messages = [
-      SUMMARY_PROMPT,
-      ...conversationHistory
-    ];
-    let parsedSummary = {};
-    let success = false;
-    let response = null; // Declare response outside the loop
-
-    for (let i = 0; i < MAX_RETRIES; i++) {
-      const currentMessages = [
+    const userProfile = await getUserProfile(userId);
+    
+    // Função que faz a chamada de IA, recebendo o número da tentativa
+    const makeAiCall = async (attemptNumber) => {
+      let currentMessages = [
         SUMMARY_PROMPT,
         ...conversationHistory
       ];
-      response = await chatAi(currentMessages, []);
-      console.log(`Tentativa ${i + 1} - Conteúdo completo da resposta do chatAi para o resumo do perfil:`, response.message);
-      try {
-        parsedSummary = JSON.parse(response.message.content);
-        success = true;
-        break;
-      } catch (jsonError) {
-        console.error(`Tentativa ${i + 1} - Erro ao fazer parse do JSON do resumo do perfil:`, jsonError);
-        console.error(`Tentativa ${i + 1} - Conteúdo recebido (para parse):`, response.message.content);
-        // If it's the last retry and still failing, prepare a fallback
-        if (i === MAX_RETRIES - 1) {
-          parsedSummary.profile_summary = response.message.content && response.message.content.trim() !== '' ? response.message.content : userProfile?.summary || '';
-        }
-        // Add a small delay before retrying
-        await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
-      }
-    }
 
-    if (!success) {
+      // Para retries, adiciona instrução específica sobre o formato JSON
+      if (attemptNumber > 0) {
+        currentMessages.push({
+          role: 'user',
+          content: 'Por favor, responda APENAS com um objeto JSON válido, sem nenhum texto adicional antes ou depois. Certifique-se de que é um JSON bem formado.'
+        });
+      }
+
+      return await chatAi(currentMessages, []);
+    };
+
+    // Usar a função de retry com JSON
+    const result = await retryAiJsonCall(makeAiCall, 3, 1000);
+    
+    let parsedSummary = {};
+    
+    if (result.success) {
+      parsedSummary = result.data;
+      console.log('JSON parseado com sucesso:', parsedSummary);
+    } else {
       console.warn('Todas as tentativas de obter JSON válido para o resumo do perfil falharam. Usando fallback.');
+      // Usar o conteúdo bruto como summary se disponível
+      if (result.fallback && result.fallback.trim() !== '') {
+        parsedSummary.profile_summary = result.fallback;
+      } else {
+        parsedSummary.profile_summary = userProfile?.summary || '';
+      }
     }
 
     const updatedProfile = {

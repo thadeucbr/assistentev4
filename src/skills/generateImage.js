@@ -1,5 +1,6 @@
 import { env } from 'process'; // eslint-disable-line no-undef
 import chatAi from '../config/ai/chat.ai.js';
+import { retryAiJsonCall } from '../utils/aiResponseUtils.js';
 
 const SD_API_URL = env.SDAPI_URL || 'http://127.0.0.1:7860';
 const SD_USERNAME = env.SDAPI_USR;
@@ -89,20 +90,36 @@ Retorne APENAS um objeto JSON válido com as seguintes chaves:
 IMPORTANTE: Sua resposta deve ser APENAS o objeto JSON. Não inclua texto antes ou depois do JSON.
 `;
 
-    console.log('Calling Prompt Architect LLM to enhance the prompt...', );
-    const promptEnhancementResponse = await chatAi([
-      { role: 'system', content: promptArchitectSystemPrompt },
-      { role: 'user', content: `Melhore o seguinte prompt para geração de imagem: "${userPrompt}"` }
-    ]);
+    console.log('Calling Prompt Architect LLM to enhance the prompt...');
+    
+    // Função que faz a chamada de IA, recebendo o número da tentativa
+    const makeAiCall = async (attemptNumber) => {
+      let currentMessages = [
+        { role: 'system', content: promptArchitectSystemPrompt },
+        { role: 'user', content: `Melhore o seguinte prompt para geração de imagem: "${userPrompt}"` }
+      ];
 
-    const promptArchitectText = JSON.stringify(promptEnhancementResponse.message.tool_calls[0].function.arguments);
-    console.log('Prompt Architect LLM raw response:', promptArchitectText);
+      // Para retries, adiciona instrução específica sobre o formato JSON
+      if (attemptNumber > 0) {
+        currentMessages.push({
+          role: 'user',
+          content: 'Por favor, responda APENAS com um objeto JSON válido, sem nenhum texto adicional antes ou depois. Certifique-se de que é um JSON bem formado.'
+        });
+      }
 
-    let enhancedPrompts;
-    try {
-      enhancedPrompts = JSON.parse(promptArchitectText);
-    } catch (jsonError) {
-      console.error('Failed to parse JSON from Prompt Architect LLM:', jsonError);
+      return await chatAi(currentMessages, []);
+    };
+
+    // Usar a função de retry com JSON
+    const result = await retryAiJsonCall(makeAiCall, 3, 1000);
+    
+    let enhancedPrompts = {};
+    
+    if (result.success) {
+      enhancedPrompts = result.data;
+      console.log('JSON do Prompt Architect parseado com sucesso:', enhancedPrompts);
+    } else {
+      console.warn('Todas as tentativas de obter JSON válido do Prompt Architect falharam. Usando fallback.');
       enhancedPrompts = {
         positive_prompt: userPrompt,
         negative_prompt: "low quality, blurry, deformed, bad anatomy, text, watermark",
@@ -110,9 +127,9 @@ IMPORTANTE: Sua resposta deve ser APENAS o objeto JSON. Não inclua texto antes 
       };
     }
 
-    const finalPositivePrompt = enhancedPrompts.prompt;
-    const finalNegativePrompt = enhancedPrompts.negative_prompt;
-    const explanation = enhancedPrompts.explanation;
+    const finalPositivePrompt = enhancedPrompts.positive_prompt || userPrompt;
+    const finalNegativePrompt = enhancedPrompts.negative_prompt || "low quality, blurry, deformed, bad anatomy, text, watermark";
+    const explanation = enhancedPrompts.explanation || "Fallback usado devido a erro no JSON.";
 
     console.log('Final Positive Prompt:', finalPositivePrompt);
     console.log('Final Negative Prompt:', finalNegativePrompt);
