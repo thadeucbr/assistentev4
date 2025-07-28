@@ -102,7 +102,7 @@ export default async function processMessage(message) {
       },
       interaction_style: inferredStyle
     };
-        await simulateTyping(data.from, true); // Simulate typing before processing
+    await simulateTyping(data.from, true); // Simulate typing before processing
 
     await updateUserProfile(userId, updatedProfile);
 
@@ -169,15 +169,27 @@ export default async function processMessage(message) {
       content: `Você é um assistente que pode responder perguntas, gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias como Mega-Sena, Quina e Lotofácil.\n\nIMPORTANTE: Ao usar ferramentas (functions/tools), siga exatamente as instruções de uso de cada função, conforme descrito no campo 'description' de cada uma.\n\nSe não tiver certeza de como usar uma função, explique o motivo e peça mais informações. Nunca ignore as instruções do campo 'description' das funções.`
     };
 
-    if (userProfile) {      dynamicPrompt.content += `
+    if (userProfile) {
+      dynamicPrompt.content += `
 
 --- User Profile ---
-`;      if (userProfile.summary) {        dynamicPrompt.content += `Resumo: ${userProfile.summary}
-`;      }      if (userProfile.sentiment?.average) {        dynamicPrompt.content += `Sentimento: ${userProfile.sentiment.average}
-`;      }      if (userProfile.preferences) {        dynamicPrompt.content += `Preferências de comunicação: Tom ${userProfile.preferences.tone || 'não especificado'}, Humor ${userProfile.preferences.humor_level || 'não especificado'}, Formato de resposta ${userProfile.preferences.response_format || 'não especificado'}, Idioma ${userProfile.preferences.language || 'não especificado'}.
-`;      }      if (userProfile.linguistic_markers) {        dynamicPrompt.content += `Marcadores linguísticos: Comprimento médio da frase ${userProfile.linguistic_markers.avg_sentence_length || 'não especificado'}, Formalidade ${userProfile.linguistic_markers.formality_score || 'não especificado'}, Usa emojis ${userProfile.linguistic_markers.uses_emojis !== undefined ? userProfile.linguistic_markers.uses_emojis : 'não especificado'}.
-`;      }      if (userProfile.key_facts && userProfile.key_facts.length > 0) {        dynamicPrompt.content += `Fatos importantes: ${userProfile.key_facts.map(fact => fact.fact).join('; ')}.
-`;      }    }
+`; if (userProfile.summary) {
+        dynamicPrompt.content += `Resumo: ${userProfile.summary}
+`;
+      } if (userProfile.sentiment?.average) {
+        dynamicPrompt.content += `Sentimento: ${userProfile.sentiment.average}
+`;
+      } if (userProfile.preferences) {
+        dynamicPrompt.content += `Preferências de comunicação: Tom ${userProfile.preferences.tone || 'não especificado'}, Humor ${userProfile.preferences.humor_level || 'não especificado'}, Formato de resposta ${userProfile.preferences.response_format || 'não especificado'}, Idioma ${userProfile.preferences.language || 'não especificado'}.
+`;
+      } if (userProfile.linguistic_markers) {
+        dynamicPrompt.content += `Marcadores linguísticos: Comprimento médio da frase ${userProfile.linguistic_markers.avg_sentence_length || 'não especificado'}, Formalidade ${userProfile.linguistic_markers.formality_score || 'não especificado'}, Usa emojis ${userProfile.linguistic_markers.uses_emojis !== undefined ? userProfile.linguistic_markers.uses_emojis : 'não especificado'}.
+`;
+      } if (userProfile.key_facts && userProfile.key_facts.length > 0) {
+        dynamicPrompt.content += `Fatos importantes: ${userProfile.key_facts.map(fact => fact.fact).join('; ')}.
+`;
+      }
+    }
 
     if (ltmContext) {
       dynamicPrompt.content += `
@@ -190,7 +202,7 @@ ${ltmContext}`;
 
     const chatMessages = [dynamicPrompt, ...messages];
     let response = await chatAi(chatMessages);
-    
+
     // Normalizar a resposta para garantir estrutura consistente
     response = normalizeAiResponse(response);
 
@@ -270,7 +282,7 @@ async function toolCall(messages, response, tools, from, id, userContent) {
         } else {
           newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Erro ao gerar áudio: ${audioResult.error}` });
         }
-      } 
+      }
     }
 
     // If a direct communication tool was used, we are done with this turn.
@@ -279,10 +291,10 @@ async function toolCall(messages, response, tools, from, id, userContent) {
     }
 
     const newResponse = await chatAi(newMessages);
-    
+
     // Normalizar a resposta para garantir estrutura consistente
     const normalizedNewResponse = normalizeAiResponse(newResponse);
-    
+
     newMessages.push(normalizedNewResponse.message);
     if ((normalizedNewResponse.message.tool_calls && normalizedNewResponse.message.tool_calls.length > 0) || normalizedNewResponse.message.function_call) {
       return toolCall(newMessages, normalizedNewResponse, tools, from, id);
