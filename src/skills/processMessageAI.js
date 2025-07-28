@@ -77,6 +77,10 @@ export default async function processMessage(message) {
   ) {
     let stepTime = Date.now();
     console.log(`[ProcessMessage] ✅ Mensagem autorizada para processamento - ${new Date().toISOString()} (+${Date.now() - startTime}ms)`);
+    
+    // Feedback imediato: simular digitação no início para mostrar que o bot está "vivo"
+    simulateTyping(data.from, true); // Não aguardar - executar em background
+    
     const userContent = (data.body || (data.type === 'image' ? 'Analyze this image' : ''))
       .replace(process.env.WHATSAPP_NUMBER, '')
       .trim();
@@ -99,11 +103,6 @@ export default async function processMessage(message) {
 
     // Análise de sentimento da mensagem atual
     stepTime = Date.now();
-    console.log(`[ProcessMessage] ⏳ Simulando digitação... - ${new Date().toISOString()}`);
-    await simulateTyping(data.from, true); // Simulate typing before processing
-    console.log(`[ProcessMessage] ✅ Simulação de digitação concluída (+${Date.now() - stepTime}ms)`);
-    
-    stepTime = Date.now();
     console.log(`[ProcessMessage] 😊 Analisando sentimento da mensagem... - ${new Date().toISOString()}`);
     const currentSentiment = await analyzeSentiment(userContent);
     console.log(`[ProcessMessage] ✅ Sentimento analisado (+${Date.now() - stepTime}ms)`);
@@ -111,7 +110,12 @@ export default async function processMessage(message) {
     // Inferência do estilo de interação
     stepTime = Date.now();
     console.log(`[ProcessMessage] 🎭 Inferindo estilo de interação... - ${new Date().toISOString()}`);
-    const inferredStyle = await inferInteractionStyle(userContent);
+    
+    // Simular digitação durante operação lenta (5+ segundos)
+    const stylingPromise = inferInteractionStyle(userContent);
+    const typingPromise = simulateTyping(data.from, true);
+    
+    const [inferredStyle] = await Promise.all([stylingPromise, typingPromise]);
     console.log(`[ProcessMessage] ✅ Estilo de interação inferido (+${Date.now() - stepTime}ms)`);
 
     // Se a inferência de estilo falhou e retornou conteúdo bruto, envie-o ao usuário
@@ -131,7 +135,6 @@ export default async function processMessage(message) {
       },
       interaction_style: inferredStyle
     };
-    await simulateTyping(data.from, true); // Simulate typing before processing
 
     await updateUserProfile(userId, updatedProfile);
     console.log(`[ProcessMessage] ✅ Perfil do usuário atualizado (+${Date.now() - stepTime}ms)`);
@@ -148,6 +151,10 @@ export default async function processMessage(message) {
     // If warm messages exist and total STM is getting too large, apply reranking and summarization
     if (warmMessages.length > 0 && currentSTM.length >= MAX_STM_MESSAGES) {
       console.log(`[ProcessMessage] 🔄 Aplicando reranking e sumarização da STM... - ${new Date().toISOString()}`);
+      
+      // Simular digitação durante processamento STM (operação lenta)
+      const stmTypingPromise = simulateTyping(data.from, true);
+      
       const userEmbedding = await embeddingModel.embedQuery(userContent);
 
       const messagesWithEmbeddings = await Promise.all(
@@ -192,6 +199,9 @@ export default async function processMessage(message) {
 
       // Update the STM with the hot messages and pruned/reranked warm messages
       messages = [...hotMessages, ...keptWarmMessages.map(m => ({ role: m.role, content: m.content }))];
+      
+      // Aguardar conclusão da simulação de digitação se ainda estiver executando
+      await stmTypingPromise;
 
     } else if (currentSTM.length > MAX_STM_MESSAGES) {
       // If no warm messages or not enough to trigger reranking, just trim by sliding window
@@ -242,10 +252,13 @@ ${ltmContext}`;
 
     stepTime = Date.now();
     console.log(`[ProcessMessage] 🤖 Enviando mensagem para IA... - ${new Date().toISOString()}`);
-    // Simulate typing before sending the message
-    await simulateTyping(data.from, true); // Simulate typing before processing
+    
+    // Simular digitação durante a chamada da IA (operação mais lenta - 30+ segundos)
     const chatMessages = [dynamicPrompt, ...messages];
-    let response = await chatAi(chatMessages);
+    const aiPromise = chatAi(chatMessages);
+    const longTypingPromise = simulateTyping(data.from, true);
+    
+    const [response] = await Promise.all([aiPromise, longTypingPromise]);
     console.log(`[ProcessMessage] ✅ Resposta da IA recebida (+${Date.now() - stepTime}ms)`);
 
     // Normalizar a resposta para garantir estrutura consistente
@@ -274,7 +287,12 @@ ${ltmContext}`;
     
     stepTime = Date.now();
     console.log(`[ProcessMessage] 📊 Atualizando resumo do perfil do usuário... - ${new Date().toISOString()}`);
-    await updateUserProfileSummary(userId, messages);
+    
+    // Simular digitação durante atualização do perfil (operação lenta - 24+ segundos)
+    const profilePromise = updateUserProfileSummary(userId, messages);
+    const profileTypingPromise = simulateTyping(data.from, true);
+    
+    await Promise.all([profilePromise, profileTypingPromise]);
     console.log(`[ProcessMessage] ✅ Resumo do perfil atualizado (+${Date.now() - stepTime}ms)`);
     
     console.log(`[ProcessMessage] ✅ Processamento da mensagem concluído - TEMPO TOTAL: ${Date.now() - startTime}ms - ${new Date().toISOString()}`);
