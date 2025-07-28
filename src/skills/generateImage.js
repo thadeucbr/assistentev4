@@ -1,6 +1,5 @@
 import { env } from 'process'; // eslint-disable-line no-undef
 import chatAi from '../config/ai/chat.ai.js';
-import { sendImage } from '../whatsapp/sendImage.js';
 
 const SD_API_URL = env.SDAPI_URL || 'http://127.0.0.1:7860';
 const SD_USERNAME = env.SDAPI_USR;
@@ -8,7 +7,6 @@ const SD_PASSWORD = env.SDAPI_PWD;
 
 export default async function generateImage({ 
   prompt: userPrompt, 
-  remoteJid, 
   seed = -1, 
   subseed = -1, 
   subseed_strength = 0, 
@@ -18,9 +16,6 @@ export default async function generateImage({
   pag_scale = 7.5 
 }) {
   // Validate required parameters
-  if (!userPrompt || !remoteJid) {
-    throw new Error('Missing required parameters: prompt and remoteJid are required');
-  }
 
   try {
     const promptArchitectSystemPrompt = `
@@ -64,13 +59,13 @@ Seu processo de trabalho é o seguinte:
 Sua resposta deve ser APENAS o objeto JSON. Não inclua nenhum texto adicional antes ou depois do JSON.
 `;
 
-    console.log('Calling Prompt Architect LLM to enhance the prompt...');
+    console.log('Calling Prompt Architect LLM to enhance the prompt...', );
     const promptEnhancementResponse = await chatAi([
       { role: 'system', content: promptArchitectSystemPrompt },
       { role: 'user', content: `Melhore o seguinte prompt para geração de imagem: "${userPrompt}"` }
     ]);
 
-    const promptArchitectText = promptEnhancementResponse.content;
+    const promptArchitectText = JSON.stringify(promptEnhancementResponse.message.tool_calls[0].function.arguments);
     console.log('Prompt Architect LLM raw response:', promptArchitectText);
 
     let enhancedPrompts;
@@ -85,13 +80,12 @@ Sua resposta deve ser APENAS o objeto JSON. Não inclua nenhum texto adicional a
       };
     }
 
-    const finalPositivePrompt = enhancedPrompts.positive_prompt;
+    const finalPositivePrompt = enhancedPrompts.prompt;
     const finalNegativePrompt = enhancedPrompts.negative_prompt;
     const explanation = enhancedPrompts.explanation;
 
     console.log('Final Positive Prompt:', finalPositivePrompt);
     console.log('Final Negative Prompt:', finalNegativePrompt);
-    console.log('Explanation from Prompt Architect:', explanation);
 
     const method = 'POST';
     const headers = new Headers();
