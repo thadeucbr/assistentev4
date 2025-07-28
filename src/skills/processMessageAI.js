@@ -101,38 +101,41 @@ export default async function processMessage(message) {
     const ltmContext = await LtmService.getRelevantContext(userId, userContent);
     console.log(`[ProcessMessage] ✅ Contexto LTM obtido (+${Date.now() - stepTime}ms)`);
 
-    // Análise de sentimento e inferência de estilo em paralelo (otimização)
+    // Mover análises para background - não bloqueiam a resposta
     stepTime = Date.now();
-    console.log(`[ProcessMessage] 🧠 Analisando sentimento e estilo em paralelo... - ${new Date().toISOString()}`);
+    console.log(`[ProcessMessage] 🚀 Movendo análises para background... - ${new Date().toISOString()}`);
     
-    // Paralelizar operações que são independentes + simulação de digitação
-    const [currentSentiment, inferredStyle] = await Promise.all([
-      analyzeSentiment(userContent),
-      inferInteractionStyle(userContent),
-      simulateTyping(data.from, true) // Simular digitação durante as análises
-    ]);
+    // Usar perfil existente por enquanto, atualizar em background
+    let currentSentiment = userProfile?.sentiment?.average || 'neutral';
+    let inferredStyle = userProfile?.interaction_style || { formality: 'neutral', humor: 'moderate', tone: 'friendly', verbosity: 'balanced' };
     
-    console.log(`[ProcessMessage] ✅ Análises concluídas (+${Date.now() - stepTime}ms)`);
-
-    // Se a inferência de estilo falhou e retornou conteúdo bruto, envie-o ao usuário
-    // if (inferredStyle.rawContent && inferredStyle.rawContent.trim().length > 0) {
-    //   await sendMessage(data.from, inferredStyle.rawContent);
-    //   return; // Encerra o processamento para evitar respostas duplicadas
-    // }
-
-    // Atualiza o perfil do usuário com o novo sentimento e estilo de interação
-    stepTime = Date.now();
-    console.log(`[ProcessMessage] 📝 Atualizando perfil do usuário... - ${new Date().toISOString()}`);
-    const updatedProfile = {
-      ...userProfile,
-      sentiment: {
-        average: currentSentiment, // Simplificado por enquanto
-        trend: 'stable' // Simplificado por enquanto
-      },
-      interaction_style: inferredStyle
-    };
-
-    await updateUserProfile(userId, updatedProfile);
+    // Executar análises em background (não bloqueia)
+    setImmediate(async () => {
+      try {
+        console.log(`[Background] 🧠 Executando análises de sentimento e estilo...`);
+        const [bgSentiment, bgStyle] = await Promise.all([
+          analyzeSentiment(userContent),
+          inferInteractionStyle(userContent)
+        ]);
+        
+        // Atualizar perfil com novas análises
+        const updatedProfile = {
+          ...userProfile,
+          sentiment: {
+            average: bgSentiment,
+            trend: 'stable'
+          },
+          interaction_style: bgStyle
+        };
+        
+        await updateUserProfile(userId, updatedProfile);
+        console.log(`[Background] ✅ Análises e perfil atualizados em background`);
+      } catch (error) {
+        console.error(`[Background] ❌ Erro nas análises:`, error);
+      }
+    });
+    
+    console.log(`[ProcessMessage] ✅ Análises delegadas para background (+${Date.now() - stepTime}ms)`);
     console.log(`[ProcessMessage] ✅ Perfil do usuário atualizado (+${Date.now() - stepTime}ms)`);
 
     // --- STM Management: Simplified for Performance ---
@@ -155,7 +158,7 @@ export default async function processMessage(message) {
     }
     console.log(`[ProcessMessage] ✅ Gerenciamento STM concluído (+${Date.now() - stepTime}ms)`);
 
-    // Constrói o prompt dinâmico
+    // Construir prompt dinâmico com personalização completa (otimizado)
     stepTime = Date.now();
     console.log(`[ProcessMessage] 🛠️ Construindo prompt dinâmico... - ${new Date().toISOString()}`);
     const dynamicPrompt = {
@@ -163,33 +166,40 @@ export default async function processMessage(message) {
       content: `Você é um assistente que pode responder perguntas, gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias como Mega-Sena, Quina e Lotofácil.\n\nIMPORTANTE: Ao usar ferramentas (functions/tools), siga exatamente as instruções de uso de cada função, conforme descrito no campo 'description' de cada uma.\n\nSe não tiver certeza de como usar uma função, explique o motivo e peça mais informações. Nunca ignore as instruções do campo 'description' das funções.`
     };
 
+    // === PERSONALIZAÇÃO DINÂMICA COMPLETA ===
     if (userProfile) {
-      dynamicPrompt.content += `
-
---- User Profile ---
-`; if (userProfile.summary) {
-        dynamicPrompt.content += `Resumo: ${userProfile.summary}
-`;
-      } if (userProfile.sentiment?.average) {
-        dynamicPrompt.content += `Sentimento: ${userProfile.sentiment.average}
-`;
-      } if (userProfile.preferences) {
-        dynamicPrompt.content += `Preferências de comunicação: Tom ${userProfile.preferences.tone || 'não especificado'}, Humor ${userProfile.preferences.humor_level || 'não especificado'}, Formato de resposta ${userProfile.preferences.response_format || 'não especificado'}, Idioma ${userProfile.preferences.language || 'não especificado'}.
-`;
-      } if (userProfile.linguistic_markers) {
-        dynamicPrompt.content += `Marcadores linguísticos: Comprimento médio da frase ${userProfile.linguistic_markers.avg_sentence_length || 'não especificado'}, Formalidade ${userProfile.linguistic_markers.formality_score || 'não especificado'}, Usa emojis ${userProfile.linguistic_markers.uses_emojis !== undefined ? userProfile.linguistic_markers.uses_emojis : 'não especificado'}.
-`;
-      } if (userProfile.key_facts && userProfile.key_facts.length > 0) {
-        dynamicPrompt.content += `Fatos importantes: ${userProfile.key_facts.map(fact => fact.fact).join('; ')}.
-`;
+      dynamicPrompt.content += `\n\n--- User Profile ---`;
+      
+      if (userProfile.summary) {
+        dynamicPrompt.content += `\nResumo: ${userProfile.summary}`;
+      }
+      
+      if (currentSentiment && currentSentiment !== 'neutral') {
+        dynamicPrompt.content += `\nSentimento atual: ${currentSentiment}`;
+      }
+      
+      if (userProfile.preferences) {
+        const prefs = userProfile.preferences;
+        dynamicPrompt.content += `\nPreferências de comunicação: Tom ${prefs.tone || 'neutro'}, Humor ${prefs.humor_level || 'moderado'}, Formato ${prefs.response_format || 'equilibrado'}, Idioma ${prefs.language || 'pt-BR'}.`;
+      }
+      
+      if (userProfile.linguistic_markers) {
+        const markers = userProfile.linguistic_markers;
+        dynamicPrompt.content += `\nEstilo linguístico: Frases ${markers.avg_sentence_length > 20 ? 'longas' : markers.avg_sentence_length < 10 ? 'curtas' : 'médias'}, ${markers.formality_score > 0.7 ? 'Formal' : markers.formality_score < 0.3 ? 'Informal' : 'Neutro'}, ${markers.uses_emojis ? 'Usa emojis' : 'Não usa emojis'}.`;
+      }
+      
+      if (inferredStyle) {
+        dynamicPrompt.content += `\nEstilo de interação atual: Formalidade ${inferredStyle.formality}, Tom ${inferredStyle.tone}, Humor ${inferredStyle.humor}, Verbosidade ${inferredStyle.verbosity}.`;
+      }
+      
+      if (userProfile.key_facts && userProfile.key_facts.length > 0) {
+        dynamicPrompt.content += `\nFatos importantes: ${userProfile.key_facts.map(fact => fact.fact).join('; ')}.`;
       }
     }
 
-    if (ltmContext) {
-      dynamicPrompt.content += `
-
---- Relevant Previous Conversations ---
-${ltmContext}`;
+    // LTM context para continuidade conversacional
+    if (ltmContext && ltmContext.trim().length > 0) {
+      dynamicPrompt.content += `\n\n--- Relevant Previous Conversations ---\n${ltmContext}`;
     }
 
     messages.push({ role: 'user', content: userContent });
@@ -198,8 +208,11 @@ ${ltmContext}`;
     stepTime = Date.now();
     console.log(`[ProcessMessage] 🤖 Enviando mensagem para IA... - ${new Date().toISOString()}`);
     
-    // Simular digitação durante a chamada da IA (operação mais lenta - 30+ segundos)
-    const chatMessages = [dynamicPrompt, ...messages];
+    // Balancear contexto vs performance: usar 12 mensagens mais recentes (mantém personalidade)
+    const contextLimit = Math.min(messages.length, 12);
+    const chatMessages = [dynamicPrompt, ...messages.slice(-contextLimit)];
+    
+    // Simular digitação durante a chamada da IA
     const aiPromise = chatAi(chatMessages);
     const longTypingPromise = simulateTyping(data.from, true);
     
@@ -228,17 +241,35 @@ ${ltmContext}`;
       const backgroundStartTime = Date.now();
       
       try {
-        // Atualizar contexto
-        console.log(`[Background] 💾 Atualizando contexto do usuário...`);
-        await updateUserContext(userId, { messages });
+        // Executar operações em paralelo para reduzir tempo total
+        await Promise.all([
+          // Atualizar contexto (rápido)
+          (async () => {
+            console.log(`[Background] 💾 Atualizando contexto do usuário...`);
+            await updateUserContext(userId, { messages });
+          })(),
+          
+          // Armazenar na LTM (médio)
+          (async () => {
+            console.log(`[Background] 📚 Armazenando conversa na LTM...`);
+            LtmService.summarizeAndStore(userId, messages.map((m) => m.content).join('\n'));
+          })()
+        ]);
         
-        // Armazenar na LTM (não bloqueia)
-        console.log(`[Background] 📚 Armazenando conversa na LTM...`);
-        LtmService.summarizeAndStore(userId, messages.map((m) => m.content).join('\n'));
+        console.log(`[Background] ✅ Operações rápidas concluídas (+${Date.now() - backgroundStartTime}ms)`);
         
-        // Atualizar perfil do usuário (operação mais lenta)
-        console.log(`[Background] 📊 Atualizando resumo do perfil do usuário...`);
-        await updateUserProfileSummary(userId, messages);
+        // Executar operação mais lenta separadamente e com timeout
+        console.log(`[Background] 📊 Atualizando resumo do perfil do usuário (com timeout)...`);
+        const profileUpdatePromise = updateUserProfileSummary(userId, messages);
+        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve('timeout'), 15000)); // 15s timeout
+        
+        const profileResult = await Promise.race([profileUpdatePromise, timeoutPromise]);
+        
+        if (profileResult === 'timeout') {
+          console.warn(`[Background] ⚠️ Timeout na atualização do perfil (>15s) - pulando para não afetar próximas mensagens`);
+        } else {
+          console.log(`[Background] ✅ Perfil atualizado com sucesso`);
+        }
         
         console.log(`[Background] ✅ Processamento em background concluído - TEMPO: ${Date.now() - backgroundStartTime}ms`);
       } catch (error) {
