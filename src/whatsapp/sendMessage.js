@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const sendMessage = async (to, content, quotedMsgId = null, sendSeen = true) => {
-  const url = `${process.env.WHATSAPP_URL}/sendText`;
+  const url = `${process.env.WHATSAPP_URL}/reply`;
 
   const options = {
     headers: {
@@ -19,7 +19,7 @@ const sendMessage = async (to, content, quotedMsgId = null, sendSeen = true) => 
       sendSeen
     }
   };
-
+  console.log('Sending message:', data);
   try {
     const response = await axios.post(url, data, options);
     // console.log(response.data);
