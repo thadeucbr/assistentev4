@@ -13,6 +13,7 @@ export default async function chatAi(chatMessages, tools) {
     try {
       return await openAiChat(chatMessages, tools);
     } catch (err) {
+      console.error('OpenAI chat failed, falling back to Ollama:', err);
       return await ollamaChat(chatMessages, tools);
     }
   }
