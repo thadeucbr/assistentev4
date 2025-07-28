@@ -43,7 +43,7 @@ async function generateAudioLocally(textToSpeak) {
 
   try {
     // Etapa 1: Gerar .wav com Piper
-    const piperCommand = `echo "${textToSpeak.replace(/"/g, '\\"')}" | "${PIPER_PATH}" --model "${MODEL_PATH}" --output_file "${wavFilePath}"`;
+    const piperCommand = `echo "${textToSpeak.replace(/"/g, '\"')}" | "${PIPER_PATH}" --model "${MODEL_PATH}" --output_file "${wavFilePath}"`;
     console.log('Gerando áudio localmente com Piper...');
     await execPromise(piperCommand, { shell: true });
 
@@ -106,10 +106,16 @@ async function generateAudioWithOpenAI(textToSpeak) {
   return audioBuffer;
 }
 
+async function generateAudioWithOllama(textToSpeak) {
+  // TODO: Implement Ollama TTS
+  console.log('Ollama TTS not implemented yet');
+  return await generateAudioLocally(textToSpeak);
+}
+
 
 /**
  * Função principal que gera e envia o áudio, escolhendo o provedor
- * com base na variável de ambiente TTS_PROVIDER.
+ * com base na variável de ambiente AI_PROVIDER.
  */
 export default async function generateAudio(textToSpeak) {
   await ensureTempDirExists();
@@ -118,12 +124,15 @@ export default async function generateAudio(textToSpeak) {
     console.log(`Iniciando geração de áudio para: "${textToSpeak}"`);
     
     let audioBuffer;
-    const provider = process.env.TTS_PROVIDER || 'local';
+    const provider = process.env.AI_PROVIDER || 'local';
 
     // Roteador: escolhe qual função de geração de áudio usar
     switch (provider) {
       case 'openai':
         audioBuffer = await generateAudioWithOpenAI(textToSpeak);
+        break;
+      case 'ollama':
+        audioBuffer = await generateAudioWithOllama(textToSpeak);
         break;
       case 'local':
       default:

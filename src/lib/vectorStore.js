@@ -1,5 +1,5 @@
-import { OpenAIEmbeddings } from '@langchain/openai';
 import * as fs from 'fs/promises';
+import { embeddingModel } from './langchain.js';
 
 const VECTOR_STORE_DIR = './vector_store';
 
@@ -42,11 +42,10 @@ async function saveVectorStore(userId, store) {
 
 const InMemoryVectorStore = {
   async addDocuments(userId, documents) {
-    const embeddings = new OpenAIEmbeddings();
     const store = await loadVectorStore(userId);
 
     for (const doc of documents) {
-      const embedding = await embeddings.embedQuery(doc.pageContent);
+      const embedding = await embeddingModel.embedQuery(doc.pageContent);
       store.push({
         pageContent: doc.pageContent,
         metadata: doc.metadata,
@@ -57,9 +56,8 @@ const InMemoryVectorStore = {
   },
 
   async similaritySearch(userId, query, k = 4) {
-    const embeddings = new OpenAIEmbeddings();
     const store = await loadVectorStore(userId);
-    const queryEmbedding = await embeddings.embedQuery(query);
+    const queryEmbedding = await embeddingModel.embedQuery(query);
 
     const results = store.map(item => ({
       item: item,
