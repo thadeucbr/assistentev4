@@ -101,58 +101,17 @@ export default async function processMessage(message) {
     const ltmContext = await LtmService.getRelevantContext(userId, userContent);
     console.log(`[ProcessMessage] ✅ Contexto LTM obtido (+${Date.now() - stepTime}ms)`);
 
-    // Análise de sentimento da mensagem atual
-    stepTime = Date.now();
-    console.log(`[ProcessMessage] 😊 Analisando sentimento da mensagem... - ${new Date().toISOString()}`);
-    const currentSentiment = await analyzeSentiment(userContent);
-    console.log(`[ProcessMessage] ✅ Sentimento analisado (+${Date.now() - stepTime}ms)`);
-    
-    // Inferência do estilo de interação
-    stepTime = Date.now();
-    console.log(`[ProcessMessage] 🎭 Inferindo estilo de interação... - ${new Date().toISOString()}`);
-    
-    // Simular digitação durante operação lenta (5+ segundos)
-    const stylingPromise = inferInteractionStyle(userContent);
-    const typingPromise = simulateTyping(data.from, true);
-    
-    const [inferredStyle] = await Promise.all([stylingPromise, typingPromise]);
-    console.log(`[ProcessMessage] ✅ Estilo de interação inferido (+${Date.now() - stepTime}ms)`);
-
-    // Se a inferência de estilo falhou e retornou conteúdo bruto, envie-o ao usuário
-    // if (inferredStyle.rawContent && inferredStyle.rawContent.trim().length > 0) {
-    //   await sendMessage(data.from, inferredStyle.rawContent);
-    //   return; // Encerra o processamento para evitar respostas duplicadas
-    // }
-
-    // Atualiza o perfil do usuário com o novo sentimento e estilo de interação
-    stepTime = Date.now();
-    console.log(`[ProcessMessage] 📝 Atualizando perfil do usuário... - ${new Date().toISOString()}`);
-    const updatedProfile = {
-      ...userProfile,
-      sentiment: {
-        average: currentSentiment, // Simplificado por enquanto
-        trend: 'stable' // Simplificado por enquanto
-      },
-      interaction_style: inferredStyle
-    };
-
-    await updateUserProfile(userId, updatedProfile);
-    console.log(`[ProcessMessage] ✅ Perfil do usuário atualizado (+${Date.now() - stepTime}ms)`);
-
     // --- STM Management: Reranking and Summarization ---
     stepTime = Date.now();
     console.log(`[ProcessMessage] 🧩 Gerenciando memória de curto prazo (STM)... - ${new Date().toISOString()}`);
     let currentSTM = [...messages]; // Create a copy to work with
 
-    // Separate hot messages (most recent) and warm messages (older ones)
     const hotMessages = currentSTM.slice(-SUMMARIZE_THRESHOLD);
     const warmMessages = currentSTM.slice(0, currentSTM.length - SUMMARIZE_THRESHOLD);
 
-    // If warm messages exist and total STM is getting too large, apply reranking and summarization
     if (warmMessages.length > 0 && currentSTM.length >= MAX_STM_MESSAGES) {
       console.log(`[ProcessMessage] 🔄 Aplicando reranking e sumarização da STM... - ${new Date().toISOString()}`);
       
-      // Simular digitação durante processamento STM (operação lenta)
       const stmTypingPromise = simulateTyping(data.from, true);
       
       const userEmbedding = await embeddingModel.embedQuery(userContent);
@@ -163,29 +122,25 @@ export default async function processMessage(message) {
             const embedding = await embeddingModel.embedQuery(msg.content);
             return { ...msg, embedding };
           }
-          return msg; // Keep system/tool messages as is, without embedding
+          return msg;
         })
       );
 
-      // Calculate similarity and sort warm messages
       const rankedWarmMessages = messagesWithEmbeddings
         .map((msg) => {
           if (msg.embedding) {
             return { ...msg, similarity: cosineSimilarity(userEmbedding, msg.embedding) };
           }
-          return { ...msg, similarity: -1 }; // Non-embeddable messages get low similarity
+          return { ...msg, similarity: -1 };
         })
-        .sort((a, b) => b.similarity - a.similarity); // Sort by similarity descending
+        .sort((a, b) => b.similarity - a.similarity);
 
-      // Determine how many warm messages to keep to fit within MAX_STM_MESSAGES
       const numWarmMessagesToKeep = MAX_STM_MESSAGES - hotMessages.length;
       const keptWarmMessages = rankedWarmMessages.slice(0, numWarmMessagesToKeep);
 
-      // Identify messages to summarize (those from warmMessages not kept)
       const keptMessageContents = new Set(keptWarmMessages.map(m => m.content));
       const messagesToSummarize = warmMessages.filter(m => !keptMessageContents.has(m.content));
 
-      // Summarize discarded messages and send to LTM
       if (messagesToSummarize.length > 0) {
         console.log(`[ProcessMessage] 📚 Sumarizando mensagens antigas para LTM... - ${new Date().toISOString()}`);
         const summaryContent = messagesToSummarize.map(m => m.content).join('\n');
@@ -193,18 +148,15 @@ export default async function processMessage(message) {
           { role: 'system', content: 'Resuma o seguinte trecho de conversa de forma concisa, focando nos fatos e informações importantes.' },
           { role: 'user', content: summaryContent }
         ]);
-        await LtmService.summarizeAndStore(userId, summaryResponse.content);
-        console.log(`[ProcessMessage] ✅ Sumarização LTM concluída (+${Date.now() - stepTime}ms)`);
+        LtmService.summarizeAndStore(userId, summaryResponse.content)
+            .catch(err => console.error(`[ProcessMessage] Erro ao sumarizar para LTM em background: ${err}`));
       }
 
-      // Update the STM with the hot messages and pruned/reranked warm messages
       messages = [...hotMessages, ...keptWarmMessages.map(m => ({ role: m.role, content: m.content }))];
       
-      // Aguardar conclusão da simulação de digitação se ainda estiver executando
       await stmTypingPromise;
 
     } else if (currentSTM.length > MAX_STM_MESSAGES) {
-      // If no warm messages or not enough to trigger reranking, just trim by sliding window
       console.log(`[ProcessMessage] ✂️ Truncando STM por janela deslizante... - ${new Date().toISOString()}`);
       messages = currentSTM.slice(-MAX_STM_MESSAGES);
     }
@@ -219,55 +171,64 @@ export default async function processMessage(message) {
     };
 
     if (userProfile) {
-      dynamicPrompt.content += `
-
---- User Profile ---
-`; if (userProfile.summary) {
-        dynamicPrompt.content += `Resumo: ${userProfile.summary}
-`;
-      } if (userProfile.sentiment?.average) {
-        dynamicPrompt.content += `Sentimento: ${userProfile.sentiment.average}
-`;
-      } if (userProfile.preferences) {
-        dynamicPrompt.content += `Preferências de comunicação: Tom ${userProfile.preferences.tone || 'não especificado'}, Humor ${userProfile.preferences.humor_level || 'não especificado'}, Formato de resposta ${userProfile.preferences.response_format || 'não especificado'}, Idioma ${userProfile.preferences.language || 'não especificado'}.
-`;
-      } if (userProfile.linguistic_markers) {
-        dynamicPrompt.content += `Marcadores linguísticos: Comprimento médio da frase ${userProfile.linguistic_markers.avg_sentence_length || 'não especificado'}, Formalidade ${userProfile.linguistic_markers.formality_score || 'não especificado'}, Usa emojis ${userProfile.linguistic_markers.uses_emojis !== undefined ? userProfile.linguistic_markers.uses_emojis : 'não especificado'}.
-`;
-      } if (userProfile.key_facts && userProfile.key_facts.length > 0) {
-        dynamicPrompt.content += `Fatos importantes: ${userProfile.key_facts.map(fact => fact.fact).join('; ')}.
-`;
+      dynamicPrompt.content += `\n\n--- User Profile ---\n`;
+      if (userProfile.summary) {
+        dynamicPrompt.content += `Resumo: ${userProfile.summary}\n`;
+      }
+      if (userProfile.preferences) {
+        dynamicPrompt.content += `Preferências de comunicação: Tom ${userProfile.preferences.tone || 'não especificado'}, Humor ${userProfile.preferences.humor_level || 'não especificado'}, Formato de resposta ${userProfile.preferences.response_format || 'não especificado'}, Idioma ${userProfile.preferences.language || 'não especificado'}.\n`;
+      }
+      if (userProfile.linguistic_markers) {
+        dynamicPrompt.content += `Marcadores linguísticos: Comprimento médio da frase ${userProfile.linguistic_markers.avg_sentence_length || 'não especificado'}, Formalidade ${userProfile.linguistic_markers.formality_score || 'não especificado'}, Usa emojis ${userProfile.linguistic_markers.uses_emojis !== undefined ? userProfile.linguistic_markers.uses_emojis : 'não especificado'}.\n`;
+      }
+      if (userProfile.key_facts && userProfile.key_facts.length > 0) {
+        dynamicPrompt.content += `Fatos importantes: ${userProfile.key_facts.map(fact => fact.fact).join('; ')}.\n`;
       }
     }
 
     if (ltmContext) {
-      dynamicPrompt.content += `
-
---- Relevant Previous Conversations ---
-${ltmContext}`;
+      dynamicPrompt.content += `\n\n--- Relevant Previous Conversations ---\n${ltmContext}`;
     }
-
-    messages.push({ role: 'user', content: userContent });
     console.log(`[ProcessMessage] ✅ Prompt dinâmico construído (+${Date.now() - stepTime}ms)`);
 
+    // --- Parallel AI Analysis ---
     stepTime = Date.now();
-    console.log(`[ProcessMessage] 🤖 Enviando mensagem para IA... - ${new Date().toISOString()}`);
-    
-    // Simular digitação durante a chamada da IA (operação mais lenta - 30+ segundos)
-    const chatMessages = [dynamicPrompt, ...messages];
-    const aiPromise = chatAi(chatMessages);
-    const longTypingPromise = simulateTyping(data.from, true);
-    
-    let [response] = await Promise.all([aiPromise, longTypingPromise]);
-    console.log(`[ProcessMessage] ✅ Resposta da IA recebida (+${Date.now() - stepTime}ms)`);
+    console.log(`[ProcessMessage] 🚀 Iniciando análises de IA em paralelo... - ${new Date().toISOString()}`);
+    simulateTyping(data.from, true);
 
-    // Normalizar a resposta para garantir estrutura consistente
+    const sentimentPromise = analyzeSentiment(userContent);
+    const stylePromise = inferInteractionStyle(userContent);
+
+    const chatMessages = [dynamicPrompt, ...messages, { role: 'user', content: userContent }];
+    const mainResponsePromise = chatAi(chatMessages);
+
+    let [currentSentiment, inferredStyle, response] = await Promise.all([
+      sentimentPromise,
+      stylePromise,
+      mainResponsePromise
+    ]);
+    console.log(`[ProcessMessage] ✅ Análises de IA concluídas (+${Date.now() - stepTime}ms)`);
+
+    // Update user profile with the latest sentiment and style (quick, synchronous update)
+    stepTime = Date.now();
+    console.log(`[ProcessMessage] 📝 Atualizando perfil do usuário (sentimento/estilo)... - ${new Date().toISOString()}`);
+    const updatedProfile = {
+      ...userProfile,
+      sentiment: { average: currentSentiment, trend: 'stable' },
+      interaction_style: inferredStyle
+    };
+    await updateUserProfile(userId, updatedProfile);
+    console.log(`[ProcessMessage] ✅ Perfil (sentimento/estilo) atualizado (+${Date.now() - stepTime}ms)`);
+
+    // --- Process AI Response ---
     stepTime = Date.now();
     console.log(`[ProcessMessage] 🔧 Normalizando resposta da IA... - ${new Date().toISOString()}`);
     response = normalizeAiResponse(response);
     console.log(`[ProcessMessage] ✅ Resposta normalizada (+${Date.now() - stepTime}ms)`);
 
+    messages.push({ role: 'user', content: userContent });
     messages.push(response.message);
+
     if ((response.message.tool_calls && response.message.tool_calls.length > 0) || response.message.function_call) {
       stepTime = Date.now();
       console.log(`[ProcessMessage] 🛠️ Executando ferramentas... - ${new Date().toISOString()}`);
@@ -275,25 +236,19 @@ ${ltmContext}`;
       console.log(`[ProcessMessage] ✅ Ferramentas executadas (+${Date.now() - stepTime}ms)`);
     }
     
+    // --- Final Asynchronous Updates ---
     stepTime = Date.now();
-    console.log(`[ProcessMessage] 💾 Atualizando contexto do usuário... - ${new Date().toISOString()}`);
+    console.log(`[ProcessMessage] 💾 Atualizando contexto e iniciando atualizações em background... - ${new Date().toISOString()}`);
+    
     await updateUserContext(userId, { messages });
-    console.log(`[ProcessMessage] ✅ Contexto atualizado (+${Date.now() - stepTime}ms)`);
-    
-    stepTime = Date.now();
-    console.log(`[ProcessMessage] 📚 Armazenando conversa na LTM... - ${new Date().toISOString()}`);
-    LtmService.summarizeAndStore(userId, messages.map((m) => m.content).join('\n'));
-    console.log(`[ProcessMessage] ✅ Conversa armazenada na LTM (+${Date.now() - stepTime}ms)`);
-    
-    stepTime = Date.now();
-    console.log(`[ProcessMessage] 📊 Atualizando resumo do perfil do usuário... - ${new Date().toISOString()}`);
-    
-    // Simular digitação durante atualização do perfil (operação lenta - 24+ segundos)
-    const profilePromise = updateUserProfileSummary(userId, messages);
-    const profileTypingPromise = simulateTyping(data.from, true);
-    
-    await Promise.all([profilePromise, profileTypingPromise]);
-    console.log(`[ProcessMessage] ✅ Resumo do perfil atualizado (+${Date.now() - stepTime}ms)`);
+
+    LtmService.summarizeAndStore(userId, messages.map((m) => m.content).join('\n'))
+        .catch(err => console.error(`[ProcessMessage] Erro ao armazenar na LTM em background: ${err}`));
+
+    updateUserProfileSummary(userId, messages)
+      .catch(err => console.error(`[ProcessMessage] Erro ao atualizar resumo do perfil em background: ${err}`));
+      
+    console.log(`[ProcessMessage] ✅ Atualizações síncronas concluídas e assíncronas iniciadas (+${Date.now() - stepTime}ms)`);
     
     console.log(`[ProcessMessage] ✅ Processamento da mensagem concluído - TEMPO TOTAL: ${Date.now() - startTime}ms - ${new Date().toISOString()}`);
   }
