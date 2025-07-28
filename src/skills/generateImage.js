@@ -127,14 +127,9 @@ Sua resposta deve ser APENAS o objeto JSON. Não inclua nenhum texto adicional a
     
     const imageBase64 = json.images[0];
     
-    // Send the generated image and the explanation
-    await sendImage(remoteJid, imageBase64, `Imagem gerada com sucesso!\n\n${explanation}`);
-    
-    return true;
+    return imageBase64
   } catch (err) {
     console.error('Erro ao gerar imagem:', err);
-    // Send an error message back to the user
-    await sendImage(remoteJid, null, `Desculpe, houve um erro ao gerar a imagem: ${err.message}`);
     return false;
   }
 }
