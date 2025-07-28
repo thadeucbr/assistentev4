@@ -1,5 +1,5 @@
 
-import chatAi from '../config/ai/chat.ai.js';
+import {chatAi} from '../config/ai/chat.ai.js';
 import { getUserProfile, updateUserProfile } from '../repository/userProfileRepository.js';
 import { retryAiJsonCall } from '../utils/aiResponseUtils.js';
 

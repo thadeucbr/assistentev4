@@ -35,7 +35,7 @@ import analyzeSentiment from './analyzeSentiment.js';
 import inferInteractionStyle from './inferInteractionStyle.js';
 import { addReminder, getReminders } from '../repository/reminderRepository.js';
 import { scheduleReminder } from './reminder.js';
-import chatAi from '../config/ai/chat.ai.js';
+import {chatAi} from '../config/ai/chat.ai.js';
 import tools from '../config/ai/tools.ai.js';
 import updateUserProfileSummary from './updateUserProfileSummary.js';
 import webSearch from './webSearch.js';
