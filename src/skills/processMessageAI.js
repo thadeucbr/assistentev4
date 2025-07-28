@@ -258,7 +258,7 @@ ${ltmContext}`;
     const aiPromise = chatAi(chatMessages);
     const longTypingPromise = simulateTyping(data.from, true);
     
-    const [response] = await Promise.all([aiPromise, longTypingPromise]);
+    let [response] = await Promise.all([aiPromise, longTypingPromise]);
     console.log(`[ProcessMessage] ✅ Resposta da IA recebida (+${Date.now() - stepTime}ms)`);
 
     // Normalizar a resposta para garantir estrutura consistente
