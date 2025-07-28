@@ -158,59 +158,65 @@ export default async function processMessage(message) {
     }
     console.log(`[ProcessMessage] ✅ Gerenciamento STM concluído (+${Date.now() - stepTime}ms)`);
 
-    // Construir prompt dinâmico com personalização completa (otimizado)
+    // Construir prompt dinâmico otimizado (menos tokens, mesma personalização)
     stepTime = Date.now();
     console.log(`[ProcessMessage] 🛠️ Construindo prompt dinâmico... - ${new Date().toISOString()}`);
     const dynamicPrompt = {
       role: 'system',
-      content: `Você é um assistente que pode responder perguntas, gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias como Mega-Sena, Quina e Lotofácil.\n\nIMPORTANTE: Ao usar ferramentas (functions/tools), siga exatamente as instruções de uso de cada função, conforme descrito no campo 'description' de cada uma.\n\nSe não tiver certeza de como usar uma função, explique o motivo e peça mais informações. Nunca ignore as instruções do campo 'description' das funções.`
+      content: `Assistente IA com ferramentas: imagens, lembretes, loterias, web.
+
+CRÍTICO: Use SEMPRE 'send_message' para responder. Nunca responda diretamente.
+
+Ferramentas web: 1) 'web_search' para URLs, 2) 'browse' na URL escolhida.`
     };
 
-    // === PERSONALIZAÇÃO DINÂMICA COMPLETA ===
+    // === PERSONALIZAÇÃO COMPACTA ===
     if (userProfile) {
-      dynamicPrompt.content += `\n\n--- User Profile ---`;
+      let profile = `\n\nPerfil:`;
       
       if (userProfile.summary) {
-        dynamicPrompt.content += `\nResumo: ${userProfile.summary}`;
+        profile += ` ${userProfile.summary}.`;
       }
       
       if (currentSentiment && currentSentiment !== 'neutral') {
-        dynamicPrompt.content += `\nSentimento atual: ${currentSentiment}`;
+        profile += ` Humor: ${currentSentiment}.`;
       }
       
       if (userProfile.preferences) {
-        const prefs = userProfile.preferences;
-        dynamicPrompt.content += `\nPreferências de comunicação: Tom ${prefs.tone || 'neutro'}, Humor ${prefs.humor_level || 'moderado'}, Formato ${prefs.response_format || 'equilibrado'}, Idioma ${prefs.language || 'pt-BR'}.`;
+        const p = userProfile.preferences;
+        profile += ` Tom: ${p.tone || 'neutro'}, Formato: ${p.response_format || 'equilibrado'}.`;
       }
       
       if (userProfile.linguistic_markers) {
-        const markers = userProfile.linguistic_markers;
-        dynamicPrompt.content += `\nEstilo linguístico: Frases ${markers.avg_sentence_length > 20 ? 'longas' : markers.avg_sentence_length < 10 ? 'curtas' : 'médias'}, ${markers.formality_score > 0.7 ? 'Formal' : markers.formality_score < 0.3 ? 'Informal' : 'Neutro'}, ${markers.uses_emojis ? 'Usa emojis' : 'Não usa emojis'}.`;
+        const m = userProfile.linguistic_markers;
+        profile += ` Estilo: ${m.formality_score > 0.6 ? 'formal' : 'casual'}${m.uses_emojis ? ', usa emojis' : ''}.`;
       }
       
-      if (inferredStyle) {
-        dynamicPrompt.content += `\nEstilo de interação atual: Formalidade ${inferredStyle.formality}, Tom ${inferredStyle.tone}, Humor ${inferredStyle.humor}, Verbosidade ${inferredStyle.verbosity}.`;
+      if (userProfile.key_facts?.length > 0) {
+        profile += ` Fatos: ${userProfile.key_facts.slice(0, 3).map(f => f.fact).join(', ')}.`;
       }
       
-      if (userProfile.key_facts && userProfile.key_facts.length > 0) {
-        dynamicPrompt.content += `\nFatos importantes: ${userProfile.key_facts.map(fact => fact.fact).join('; ')}.`;
-      }
+      dynamicPrompt.content += profile;
     }
 
-    // LTM context para continuidade conversacional
+    // LTM context compacto
     if (ltmContext && ltmContext.trim().length > 0) {
-      dynamicPrompt.content += `\n\n--- Relevant Previous Conversations ---\n${ltmContext}`;
+      // Limitar LTM para evitar prompts muito longos
+      const shortLtm = ltmContext.length > 500 ? ltmContext.substring(0, 500) + '...' : ltmContext;
+      dynamicPrompt.content += `\n\nContexto: ${shortLtm}`;
     }
 
     messages.push({ role: 'user', content: userContent });
-    console.log(`[ProcessMessage] ✅ Prompt dinâmico construído (+${Date.now() - stepTime}ms)`);
+    console.log(`[ProcessMessage] ✅ Prompt dinâmico construído (+${Date.now() - stepTime}ms) - Tokens: ~${JSON.stringify(dynamicPrompt).length / 4}`);
 
     stepTime = Date.now();
     console.log(`[ProcessMessage] 🤖 Enviando mensagem para IA... - ${new Date().toISOString()}`);
     
-    // Balancear contexto vs performance: usar 12 mensagens mais recentes (mantém personalidade)
-    const contextLimit = Math.min(messages.length, 12);
+    // Otimização agressiva: usar apenas 6 mensagens mais recentes para OpenAI (mais rápido)
+    const contextLimit = Math.min(messages.length, 6);
     const chatMessages = [dynamicPrompt, ...messages.slice(-contextLimit)];
+    
+    console.log(`[ProcessMessage] 📊 Contexto otimizado: ${chatMessages.length} mensagens, ~${JSON.stringify(chatMessages).length / 4} tokens`);
     
     // Simular digitação durante a chamada da IA
     const aiPromise = chatAi(chatMessages);

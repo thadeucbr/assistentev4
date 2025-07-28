@@ -23,7 +23,10 @@ function sanitizeMessages(messages) {
 }
 
 export default async function openAiChat(chatMessages, toolsParam) {
-  console.log('openAiChat', chatMessages);
+  const openaiStartTime = Date.now();
+  console.log(`[OpenAI] 🚀 Iniciando chamada para OpenAI (${OPENAI_MODEL}) - ${new Date().toISOString()}`);
+  console.log(`[OpenAI] 📊 Mensagens: ${chatMessages.length}, Tokens estimados: ~${JSON.stringify(chatMessages).length / 4}`);
+  
   chatMessages = sanitizeMessages(chatMessages);
   if (!OPENAI_KEY) {
     throw new Error('Missing OPENAI_API_KEY environment variable');
@@ -32,7 +35,13 @@ export default async function openAiChat(chatMessages, toolsParam) {
   const body = {
     model: OPENAI_MODEL,
     messages: chatMessages,
-    function_call: 'auto'
+    function_call: 'auto',
+    // Otimizações de performance
+    temperature: 0.7,        // Reduzir variabilidade para resposta mais rápida
+    max_tokens: 1000,        // Limitar tokens para respostas mais focadas
+    top_p: 0.9,             // Reduzir espaço de busca
+    frequency_penalty: 0.1,  // Evitar repetições
+    presence_penalty: 0.1    // Encorajar novos tópicos
   };
 
   if (toolsParam !== undefined && toolsParam.length === 0) {
@@ -42,6 +51,8 @@ export default async function openAiChat(chatMessages, toolsParam) {
   } else {
     body.functions = tools;
   }
+  
+  console.log(`[OpenAI] 📤 Enviando request - ${new Date().toISOString()}`);
   const response = await fetch(OPENAI_URL, {
     method: 'POST',
     headers: {
@@ -56,6 +67,7 @@ export default async function openAiChat(chatMessages, toolsParam) {
   }
 
   const { choices } = await response.json();
-  console.log('OpenAI response:', choices);
+  console.log(`[OpenAI] ✅ Resposta recebida - TEMPO OPENAI: ${Date.now() - openaiStartTime}ms - ${new Date().toISOString()}`);
+  console.log(`[OpenAI] 📊 Tokens resposta: ~${JSON.stringify(choices[0]).length / 4}, Função chamada: ${choices[0].message.function_call ? 'Sim' : 'Não'}`);
   return choices[0];
 }
