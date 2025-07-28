@@ -65,6 +65,7 @@ Além disso, você pode usar outras ferramentas para gerar imagens, analisar ima
 };
 
 export default async function processMessage(message) {
+  console.log('[ProcessMessage] 🚀 Iniciando processamento da mensagem');
   const { data } = message;
   const isGroup = groups.includes(data?.chatId);
   if (
@@ -73,18 +74,30 @@ export default async function processMessage(message) {
         data?.quotedMsgObj?.author === process.env.WHATSAPP_NUMBER)) ||
     !isGroup
   ) {
+    console.log('[ProcessMessage] ✅ Mensagem autorizada para processamento');
     const userContent = (data.body || (data.type === 'image' ? 'Analyze this image' : ''))
       .replace(process.env.WHATSAPP_NUMBER, '')
       .trim();
     const userId = data.from.replace('@c.us', '');
+    
+    console.log('[ProcessMessage] 📖 Carregando contexto do usuário...');
     let { messages } = await getUserContext(userId); // This 'messages' is our STM
+    
+    console.log('[ProcessMessage] 👤 Carregando perfil do usuário...');
     const userProfile = await getUserProfile(userId);
+    
+    console.log('[ProcessMessage] 🧠 Buscando contexto relevante na LTM...');
     const ltmContext = await LtmService.getRelevantContext(userId, userContent);
 
     // Análise de sentimento da mensagem atual
+    console.log('[ProcessMessage] ⏳ Simulando digitação...');
     await simulateTyping(data.from, true); // Simulate typing before processing
+    
+    console.log('[ProcessMessage] 😊 Analisando sentimento da mensagem...');
     const currentSentiment = await analyzeSentiment(userContent);
+    
     // Inferência do estilo de interação
+    console.log('[ProcessMessage] 🎭 Inferindo estilo de interação...');
     const inferredStyle = await inferInteractionStyle(userContent);
 
     // Se a inferência de estilo falhou e retornou conteúdo bruto, envie-o ao usuário
@@ -94,6 +107,7 @@ export default async function processMessage(message) {
     // }
 
     // Atualiza o perfil do usuário com o novo sentimento e estilo de interação
+    console.log('[ProcessMessage] 📝 Atualizando perfil do usuário...');
     const updatedProfile = {
       ...userProfile,
       sentiment: {
@@ -107,6 +121,7 @@ export default async function processMessage(message) {
     await updateUserProfile(userId, updatedProfile);
 
     // --- STM Management: Reranking and Summarization ---
+    console.log('[ProcessMessage] 🧩 Gerenciando memória de curto prazo (STM)...');
     let currentSTM = [...messages]; // Create a copy to work with
 
     // Separate hot messages (most recent) and warm messages (older ones)
@@ -115,6 +130,7 @@ export default async function processMessage(message) {
 
     // If warm messages exist and total STM is getting too large, apply reranking and summarization
     if (warmMessages.length > 0 && currentSTM.length >= MAX_STM_MESSAGES) {
+      console.log('[ProcessMessage] 🔄 Aplicando reranking e sumarização da STM...');
       const userEmbedding = await embeddingModel.embedQuery(userContent);
 
       const messagesWithEmbeddings = await Promise.all(
@@ -147,6 +163,7 @@ export default async function processMessage(message) {
 
       // Summarize discarded messages and send to LTM
       if (messagesToSummarize.length > 0) {
+        console.log('[ProcessMessage] 📚 Sumarizando mensagens antigas para LTM...');
         const summaryContent = messagesToSummarize.map(m => m.content).join('\n');
         const summaryResponse = await chatModel.invoke([
           { role: 'system', content: 'Resuma o seguinte trecho de conversa de forma concisa, focando nos fatos e informações importantes.' },
@@ -160,10 +177,12 @@ export default async function processMessage(message) {
 
     } else if (currentSTM.length > MAX_STM_MESSAGES) {
       // If no warm messages or not enough to trigger reranking, just trim by sliding window
+      console.log('[ProcessMessage] ✂️ Truncando STM por janela deslizante...');
       messages = currentSTM.slice(-MAX_STM_MESSAGES);
     }
 
     // Constrói o prompt dinâmico
+    console.log('[ProcessMessage] 🛠️ Construindo prompt dinâmico...');
     const dynamicPrompt = {
       role: 'system',
       content: `Você é um assistente que pode responder perguntas, gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias como Mega-Sena, Quina e Lotofácil.\n\nIMPORTANTE: Ao usar ferramentas (functions/tools), siga exatamente as instruções de uso de cada função, conforme descrito no campo 'description' de cada uma.\n\nSe não tiver certeza de como usar uma função, explique o motivo e peça mais informações. Nunca ignore as instruções do campo 'description' das funções.`
@@ -200,26 +219,40 @@ ${ltmContext}`;
 
     messages.push({ role: 'user', content: userContent });
 
+    console.log('[ProcessMessage] 🤖 Enviando mensagem para IA...');
     const chatMessages = [dynamicPrompt, ...messages];
     let response = await chatAi(chatMessages);
 
     // Normalizar a resposta para garantir estrutura consistente
+    console.log('[ProcessMessage] 🔧 Normalizando resposta da IA...');
     response = normalizeAiResponse(response);
 
     messages.push(response.message);
     if ((response.message.tool_calls && response.message.tool_calls.length > 0) || response.message.function_call) {
+      console.log('[ProcessMessage] 🛠️ Executando ferramentas...');
       messages = await toolCall(messages, response, tools, data.from, data.id, userContent);
     }
+    
+    console.log('[ProcessMessage] 💾 Atualizando contexto do usuário...');
     await updateUserContext(userId, { messages });
+    
+    console.log('[ProcessMessage] 📚 Armazenando conversa na LTM...');
     LtmService.summarizeAndStore(userId, messages.map((m) => m.content).join('\n'));
+    
+    console.log('[ProcessMessage] 📊 Atualizando resumo do perfil do usuário...');
     await updateUserProfileSummary(userId, messages);
+    
+    console.log('[ProcessMessage] ✅ Processamento da mensagem concluído');
   }
 }
 
 async function toolCall(messages, response, tools, from, id, userContent) {
+  console.log('[ToolCall] 🔧 Iniciando execução de ferramentas');
   const newMessages = messages;
   let directCommunicationOccurred = false; // Flag to track if a direct communication tool was used
+  
   if (response.message.function_call) {
+    console.log('[ToolCall] 🔄 Convertendo function_call para tool_calls...');
     response.message.tool_calls = [
       {
         function: {
@@ -229,11 +262,15 @@ async function toolCall(messages, response, tools, from, id, userContent) {
       }
     ];
   }
+  
   if (response.message.tool_calls && response.message.tool_calls.length > 0) {
+    console.log(`[ToolCall] 📋 Executando ${response.message.tool_calls.length} ferramenta(s)`);
+    
     for (const toolCall of response.message.tool_calls) {
       const args = toolCall.function.arguments;
+      
       if (toolCall.function.name === 'generate_image') {
-        console.log(args)
+        console.log('[ToolCall] 🎨 Gerando imagem...');
         const image = await generateImage({ ...args });
         if (image.error) {
           newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Erro ao gerar imagem: ${image.error}` });
@@ -242,13 +279,16 @@ async function toolCall(messages, response, tools, from, id, userContent) {
           await sendImage(from, image, args.prompt);
         }
       } else if (toolCall.function.name === 'send_message') {
+        console.log('[ToolCall] 💬 Enviando mensagem...');
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Mensagem enviada ao usuário: "${args.content}"` });
         await sendMessage(from, args.content);
         directCommunicationOccurred = true; // Set flag
       } else if (toolCall.function.name === 'analyze_image') {
+        console.log('[ToolCall] 🔍 Analisando imagem...');
         const analysis = await analyzeImage({ id, prompt: args.prompt });
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: analysis });
       } else if (toolCall.function.name === 'reminder') {
+        console.log('[ToolCall] ⏰ Processando lembrete...');
         if (args.action === 'create') {
           const newReminder = await addReminder(from, args.message, args.scheduledTime);
           scheduleReminder(newReminder);
@@ -258,22 +298,25 @@ async function toolCall(messages, response, tools, from, id, userContent) {
           newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Seus lembretes: ${JSON.stringify(reminders)}` });
         }
       } else if (toolCall.function.name === 'lottery_check') {
+        console.log('[ToolCall] 🎲 Verificando loteria...');
         const result = await lotteryCheck(args.modalidade, args.sorteio);
         newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
       } else if (toolCall.function.name === 'browse') {
+        console.log('[ToolCall] 🌐 Navegando na web...');
         const result = await browse({ url: args.url });
         if (result.error && result.error.includes('net::ERR_NAME_NOT_RESOLVED')) {
-          console.warn(`Browse failed for ${args.url} due to name resolution error. Attempting web search as fallback.`);
+          console.warn(`[ToolCall] ⚠️ Browse falhou para ${args.url}, tentando busca web como fallback`);
           const webSearchResult = await webSearch({ query: userContent });
           newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Browse failed. Attempted web search with query "${userContent}": ${JSON.stringify(webSearchResult)}` });
         } else {
           newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
         }
       } else if (toolCall.function.name === 'web_search') {
+        console.log('[ToolCall] 🔍 Buscando na web...');
         const result = await webSearch({ query: args.query });
         newMessages.push({ name: 'web_search', role: 'tool', content: JSON.stringify(result) });
       } else if (toolCall.function.name === 'generate_audio') {
-        console.log('Generating audio with args:', args);
+        console.log('[ToolCall] 🔊 Gerando áudio...');
         const audioResult = await generateAudio(args.textToSpeak);
         if (audioResult.success) {
           await sendPtt(from, audioResult.audioBuffer, id);
@@ -287,16 +330,20 @@ async function toolCall(messages, response, tools, from, id, userContent) {
 
     // If a direct communication tool was used, we are done with this turn.
     if (directCommunicationOccurred) {
+      console.log('[ToolCall] ✅ Comunicação direta executada, finalizando');
       return newMessages;
     }
 
+    console.log('[ToolCall] 🔄 Enviando resposta das ferramentas para IA...');
     const newResponse = await chatAi(newMessages);
 
     // Normalizar a resposta para garantir estrutura consistente
+    console.log('[ToolCall] 🔧 Normalizando nova resposta da IA...');
     const normalizedNewResponse = normalizeAiResponse(newResponse);
 
     newMessages.push(normalizedNewResponse.message);
     if ((normalizedNewResponse.message.tool_calls && normalizedNewResponse.message.tool_calls.length > 0) || normalizedNewResponse.message.function_call) {
+      console.log('[ToolCall] 🔁 Ferramentas adicionais detectadas, executando recursivamente...');
       return toolCall(newMessages, normalizedNewResponse, tools, from, id);
     }
 
@@ -305,7 +352,9 @@ async function toolCall(messages, response, tools, from, id, userContent) {
     //   await sendMessage(from, normalizedNewResponse.message.content);
     // }
 
+    console.log('[ToolCall] ✅ Execução de ferramentas concluída');
     return newMessages;
   }
+  console.log('[ToolCall] ⚠️ Nenhuma ferramenta para executar');
   return messages;
 }
