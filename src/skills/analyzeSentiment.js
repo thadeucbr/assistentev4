@@ -1,5 +1,6 @@
 
 import chatAi from '../config/ai/chat.ai.js';
+import { extractContent } from '../utils/aiResponseUtils.js';
 
 const SENTIMENT_ANALYSIS_PROMPT = {
   role: 'system',
@@ -13,7 +14,10 @@ export default async function analyzeSentiment(text) {
       { role: 'user', content: text }
     ];
     const response = await chatAi(messages, []);
-    const sentiment = response.message.content.toLowerCase().trim();
+    
+    // Extrair o conteúdo usando a função utilitária
+    const content = extractContent(response);
+    const sentiment = content.toLowerCase().trim();
 
     if (['positivo', 'neutro', 'negativo'].includes(sentiment)) {
       return sentiment;

@@ -1,154 +1,177 @@
 import { env } from 'process'; // eslint-disable-line no-undef
+import chatAi from '../config/ai/chat.ai.js';
+import { retryAiJsonCall } from '../utils/aiResponseUtils.js';
 
-const sd_url = env.SDAPI_URL || 'http://127.0.0.1:7860';
-const sd_username = env.SDAPI_USR;
-const sd_password = env.SDAPI_PWD;
+const SD_API_URL = env.SDAPI_URL || 'http://127.0.0.1:7860';
+const SD_USERNAME = env.SDAPI_USR;
+const SD_PASSWORD = env.SDAPI_PWD;
 
-export default async function generateImage({ prompt, seed = -1, subseed = -1, subseed_strength = 0, steps = 30, width = 512, height = 512, pag_scale = 7.5, negative_prompt = 'painting, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, deformed, ugly, blurry, bad anatomy, bad proportions, extra limbs, cloned face, skinny, glitchy, double torso, extra arms, extra hands, mangled fingers, missing lips, ugly face, distorted face, extra legs' }) {
+export default async function generateImage({ 
+  prompt: userPrompt, 
+  seed = -1, 
+  subseed = -1, 
+  subseed_strength = 0, 
+  steps = 30, 
+  width = 512, 
+  height = 512, 
+  pag_scale = 7.5 
+}) {
+  // Validate required parameters
+
   try {
+    const promptArchitectSystemPrompt = `
+Você é o 'Prompt Architect', um engenheiro de prompt especialista para o modelo de geração de imagem Stable Diffusion. Sua missão é colaborar com os usuários para transformar suas ideias, mesmo que vagas, em prompts perfeitamente estruturados e detalhados que gerem imagens de alta qualidade.
+
+PRINCÍPIOS FUNDAMENTAIS:
+
+1. **Princípio da Prioridade**: Os tokens no início do prompt exercem maior influência. Sempre posicione o sujeito principal e estilo dominante primeiro.
+
+2. **Estrutura Hierárquica**: Organize o prompt em blocos funcionais:
+   - Sujeito e Ação (o "quê" da imagem)
+   - Meio e Estilo (técnica artística)
+   - Composição e Enquadramento
+   - Iluminação e Atmosfera
+   - Cor e Detalhes Adicionais
+   - Artista (quando apropriado)
+
+3. **Modelo Híbrido**: Use frases descritivas curtas separadas por vírgulas, combinando clareza semântica com controle técnico preciso.
+
+TÉCNICAS AVANÇADAS:
+
+- **Ponderação**: Use (palavra:peso) para enfatizar conceitos importantes. Exemplo: (olhos azuis:1.3)
+- **De-ênfase**: Use [palavra] ou (palavra:0.7) para reduzir atenção
+- **Separação**: Use vírgulas para separação suave, BREAK para isolamento completo
+
+LÉXICO DE ARTISTAS (use quando apropriado):
+- **Greg Rutkowski**: fantasia épica, iluminação dramática, batalhas
+- **Alphonse Mucha**: Art Nouveau, figuras femininas elegantes, decorativo
+- **H.R. Giger**: biomecânico, sci-fi horror, surrealismo sombrio
+- **Makoto Shinkai**: anime, paisagens hiper-realistas, céus detalhados
+- **Artgerm**: retratos estilizados, cores vibrantes, digital art
+- **Ansel Adams**: fotografia P&B, paisagens, alto contraste
+- **Zdzisław Beksiński**: surrealismo sombrio, distópico
+
+ESTILOS VISUAIS PRINCIPAIS:
+- **Cinematic**: "cinematic film still, shallow depth of field, vignette, highly detailed, high budget, bokeh, moody, epic, film grain"
+- **Anime**: "anime artwork, anime style, key visual, vibrant, studio anime, highly detailed"
+- **Photorealistic**: "photorealistic, hyperrealistic, 8k photo, professional photography, sharp focus"
+- **Fantasy Art**: "ethereal fantasy concept art, magnificent, celestial, painterly, epic, magical"
+- **Cyberpunk/Neonpunk**: "neonpunk style, cyberpunk, neon, ultramodern, high contrast, cinematic"
+
+MAPEAMENTO PREDITIVO DE PROMPTS NEGATIVOS:
+
+Analise o prompt positivo para identificar riscos e construa negativos direcionados:
+
+- **portrait, face, close-up** → (poorly drawn face:1.2), ugly, cloned face, distorted face, extra eyes
+- **hands, holding, fingers** → (poorly drawn hands:1.3), mutated hands, extra fingers, fused fingers, disconnected limbs
+- **full body, person** → bad anatomy, bad proportions, malformed limbs, extra limbs, long neck
+- **photorealistic, photography** → painting, drawing, cartoon, 3d, render, anime, blurry
+- **anime, cartoon** → photorealistic, photography, 3d, realistic, real life
+- **multiple subjects** → cloned face, duplicate
+- **qualquer prompt** → worst quality, low quality, jpeg artifacts, blurry, watermark, text
+
+PROCESSO DE ANÁLISE:
+
+1. **Deconstrução**: Identifique sujeito, ação, estilo, composição, iluminação
+2. **Enriquecimento**: Adicione termos técnicos específicos e detalhes visuais
+3. **Hierarquização**: Organize componentes por importância (Princípio da Prioridade)
+4. **Otimização**: Aplique ponderação e sintaxe avançada quando necessário
+5. **Predição de Riscos**: Construa prompt negativo baseado nos elementos do prompt positivo
+
+FORMATO DE RESPOSTA:
+
+Retorne APENAS um objeto JSON válido com as seguintes chaves:
+{
+  "positive_prompt": "prompt positivo otimizado em inglês, seguindo todas as diretrizes",
+  "negative_prompt": "prompt negativo preditivo e direcionado em inglês",
+  "explanation": "explicação detalhada em português do raciocínio, técnicas aplicadas e melhorias implementadas"
+}
+
+IMPORTANTE: Sua resposta deve ser APENAS o objeto JSON. Não inclua texto antes ou depois do JSON.
+`;
+
+    console.log('Calling Prompt Architect LLM to enhance the prompt...');
+    
+    // Função que faz a chamada de IA, recebendo o número da tentativa
+    const makeAiCall = async (attemptNumber) => {
+      let currentMessages = [
+        { role: 'system', content: promptArchitectSystemPrompt },
+        { role: 'user', content: `Melhore o seguinte prompt para geração de imagem: "${userPrompt}"` }
+      ];
+
+      // Para retries, adiciona instrução específica sobre o formato JSON
+      if (attemptNumber > 0) {
+        currentMessages.push({
+          role: 'user',
+          content: 'Por favor, responda APENAS com um objeto JSON válido, sem nenhum texto adicional antes ou depois. Certifique-se de que é um JSON bem formado.'
+        });
+      }
+
+      return await chatAi(currentMessages, []);
+    };
+
+    // Usar a função de retry com JSON
+    const result = await retryAiJsonCall(makeAiCall, 3, 1000);
+    
+    let enhancedPrompts = {};
+    
+    if (result.success) {
+      enhancedPrompts = result.data;
+      console.log('JSON do Prompt Architect parseado com sucesso:', enhancedPrompts);
+    } else {
+      console.warn('Todas as tentativas de obter JSON válido do Prompt Architect falharam. Usando fallback.');
+      enhancedPrompts = {
+        positive_prompt: userPrompt,
+        negative_prompt: "low quality, blurry, deformed, bad anatomy, text, watermark",
+        explanation: "JSON parsing failed, used original prompt and generic negative prompt."
+      };
+    }
+
+    const finalPositivePrompt = enhancedPrompts.positive_prompt || userPrompt;
+    const finalNegativePrompt = enhancedPrompts.negative_prompt || "low quality, blurry, deformed, bad anatomy, text, watermark";
+    const explanation = enhancedPrompts.explanation || "Fallback usado devido a erro no JSON.";
+
+    console.log('Final Positive Prompt:', finalPositivePrompt);
+    console.log('Final Negative Prompt:', finalNegativePrompt);
+
     const method = 'POST';
     const headers = new Headers();
     const body = JSON.stringify({
-      "prompt": prompt,
-      "negative_prompt": negative_prompt,
+      "prompt": finalPositivePrompt,
+      "negative_prompt": finalNegativePrompt,
       "seed": seed,
       "subseed": subseed,
       "subseed_strength": subseed_strength,
-      // "seed_resize_from_h": -1,
-      // "seed_resize_from_w": -1,
       "batch_size": 1,
-      // "n_iter": 1,
       "steps": steps,
-      // "clip_skip": 1,
       "width": width,
       "height": height,
-      // "sampler_index": 0,
-      // "sampler_name": "DPM++ 2M SDE",
-      // "schedule": "Karras",            // Schedule recomendado: "Karras" ou "Exponential"
-      // "hr_sampler_name": "Same as primary",
-      // "eta": 0,
-      // "cfg_scale": 3.0,                // CFG recomendado: 2.0 ou 3.0
-      // "cfg_end": 1,
-      // "diffusers_guidance_rescale": 0.7,
-      "pag_scale": pag_scale,                // Perturbed Attention Guidance (PAG)
-      // "pag_adaptive": 0.5,             // Ajuste adaptativo para PAG
-      // "styles": [],
-      // "tiling": false,
-      // "vae_type": "Full",
-      // "hidiffusion": false,
-      // "do_not_reload_embeddings": false,
-      // "restore_faces": false,
-      // "detailer_enabled": false,
-      // "detailer_prompt": "",
-      // "detailer_negative": "",
-      // "detailer_steps": 10,
-      // "detailer_strength": 0.3,
-      // "hdr_mode": 0,
-      // "hdr_brightness": 0,
-      // "hdr_color": 0,
-      // "hdr_sharpen": 0,
-      // "hdr_clamp": false,
-      // "hdr_boundary": 4,
-      // "hdr_threshold": 0.95,
-      // "hdr_maximize": false,
-      // "hdr_max_center": 0.6,
-      // "hdr_max_boundry": 1,
-      // "hdr_color_picker": "string",
-      // "hdr_tint_ratio": 0,
-      // "init_images": [
-      //   "string"
-      // ],
-      // "resize_mode": 0,
-      // "resize_name": "None",
-      // "resize_context": "None",
-      // "denoising_strength": 0.3,
-      // "image_cfg_scale": 0,
-      // "initial_noise_multiplier": 0,
-      // "scale_by": 1,
-      // "selected_scale_tab": 0,
-      // "mask": "string",
-      // "latent_mask": "string",
-      // "mask_for_overlay": "string",
-      // "mask_blur": 4,
-      // "paste_to": "string",
-      // "inpainting_fill": 0,
-      // "inpaint_full_res": false,
-      // "inpaint_full_res_padding": 0,
-      // "inpainting_mask_invert": 0,
-      // "overlay_images": "string",
-      // "enable_hr": false,
-      // "firstphase_width": 0,
-      // "firstphase_height": 0,
-      // "hr_scale": 2,
-      // "hr_force": false,
-      // "hr_resize_mode": 0,
-      // "hr_resize_context": "None",
-      // "hr_upscaler": "string",
-      // "hr_second_pass_steps": 0,
-      // "hr_resize_x": 0,
-      // "hr_resize_y": 0,
-      // "hr_denoising_strength": 0,
-      // "refiner_steps": 5,
-      // "refiner_start": 0,
-      // "refiner_prompt": "",
-      // "refiner_negative": "",
-      // "hr_refiner_start": 0,
-      // "do_not_save_samples": false,
-      // "do_not_save_grid": false,
-      // "script_args": [],
-      // "override_settings": {},
-      // "override_settings_restore_afterwards": true,
-      // "script_name": "none",
-      // "send_images": true,
-      // "save_images": false,
-      // "alwayson_scripts": {},
-      // "ip_adapter": [
-      //   {
-      //     "adapter": "Base",
-      //     "images": [],
-      //     "masks": [],
-      //     "scale": 0.5,
-      //     "start": 0,
-      //     "end": 1,
-      //     "crop": false
-      //   }
-      // ],
-      // "face": {
-      //   "mode": "FaceID",
-      //   "source_images": [
-      //     "string"
-      //   ],
-      //   "ip_model": "FaceID Base",
-      //   "ip_override_sampler": true,
-      //   "ip_cache_model": true,
-      //   "ip_strength": 1,
-      //   "ip_structure": 1,
-      //   "id_strength": 1,
-      //   "id_conditioning": 0.5,
-      //   "id_cache": true,
-      //   "pm_trigger": "person",
-      //   "pm_strength": 1,
-      //   "pm_start": 0.5,
-      //   "fs_cache": true
-      // },
-      // "extra": {}
+      "pag_scale": pag_scale,
     });
 
     headers.set('Content-Type', 'application/json');
-    if (sd_username && sd_password) {
-      headers.set('Authorization', `Basic ${btoa(`${sd_username}:${sd_password}`)}`);
+    if (SD_USERNAME && SD_PASSWORD) {
+      headers.set('Authorization', `Basic ${btoa(`${SD_USERNAME}:${SD_PASSWORD}`)}`);
     }
 
-    const res = await fetch(`${sd_url}/sdapi/v1/txt2img`, { method, headers, body });
-    if (res.status !== 200) {
-      throw new Error(`Error: ${res.status}`);
+    const res = await fetch(`${SD_API_URL}/sdapi/v1/txt2img`, { method, headers, body });
+    if (!res.ok) {
+      throw new Error(`HTTP Error: ${res.status} ${res.statusText}`);
     }
 
     const json = await res.json();
-    console.log(json)
-    return json.images[0];
+    console.log('Stable Diffusion API response:', json);
+    
+    if (!json.images || !json.images[0]) {
+      throw new Error('No images generated by Stable Diffusion API');
+    }
+    
+    const imageBase64 = json.images[0];
+    
+    return imageBase64
   } catch (err) {
-    console.log(err.message)
-    return { error: err.message || 'Erro desconhecido', stack: err.stack || undefined };
+    console.error('Erro ao gerar imagem:', err);
+    return false;
   }
 }
+  

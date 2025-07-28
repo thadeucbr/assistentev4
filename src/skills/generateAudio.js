@@ -36,42 +36,27 @@ async function ensureTempDirExists() {
  * Retorna um Buffer com o áudio em formato OGG.
  * @param {string} textToSpeak O texto a ser falado.
  */
-async function generateAudioLocally(text) {
+async function generateAudioLocally(textToSpeak) {
   const baseFileName = `local_audio_${Date.now()}`;
   const wavFilePath = path.resolve(path.join(TEMP_AUDIO_DIR, `${baseFileName}.wav`));
   const oggFilePath = path.resolve(path.join(TEMP_AUDIO_DIR, `${baseFileName}.ogg`));
 
   try {
     // Etapa 1: Gerar .wav com Piper
-    const piperCommand = `echo "${text}" | "${PIPER_PATH}" --model "${MODEL_PATH}" --output_file "${wavFilePath}"`;
+    const piperCommand = `echo "${textToSpeak.replace(/"/g, '\"')}" | "${PIPER_PATH}" --model "${MODEL_PATH}" --output_file "${wavFilePath}"`;
     console.log('Gerando áudio localmente com Piper...');
-    console.log(`Piper Command: ${piperCommand}`);
-    try {
-      const { stdout, stderr } = await execPromise(piperCommand, { shell: true });
-      console.log(`Piper stdout: ${stdout}`);
-      if (stderr) console.error(`Piper stderr: ${stderr}`);
-    } catch (execError) {
-      console.error(`Error executing Piper command: ${execError.message}`);
-      throw execError;
-    }
+    await execPromise(piperCommand, { shell: true });
 
     // Etapa 2: Converter .wav para .ogg com ffmpeg
     console.log('Convertendo para .ogg...');
-    console.log(`FFmpeg input: ${wavFilePath}, output: ${oggFilePath}`);
     await new Promise((resolve, reject) => {
       ffmpeg(wavFilePath)
         .audioCodec('libopus')
         .audioBitrate('32k')
         .outputOptions('-vbr', 'on')
         .output(oggFilePath)
-        .on('end', () => {
-          console.log('FFmpeg conversion finished.');
-          resolve();
-        })
-        .on('error', (err) => {
-          console.error(`FFmpeg error: ${err.message}`);
-          reject(err);
-        })
+        .on('end', resolve)
+        .on('error', reject)
         .run();
     });
 
@@ -91,7 +76,7 @@ async function generateAudioLocally(text) {
  * Retorna um Buffer com o áudio já em formato Opus.
  * @param {string} textToSpeak O texto a ser falado.
  */
-async function generateAudioWithOpenAI(text) {
+async function generateAudioWithOpenAI(textToSpeak) {
   console.log('Gerando áudio com a API da OpenAI...');
   const apiKey = process.env.OPENAI_API_KEY;
   const voice = process.env.OPENAI_TTS_VOICE || 'onyx';
@@ -105,7 +90,7 @@ async function generateAudioWithOpenAI(text) {
     },
     body: JSON.stringify({
       model: model,
-      input: text,
+      input: textToSpeak,
       voice: voice,
       response_format: 'opus', // Pedimos o formato correto diretamente!
     }),
@@ -121,28 +106,37 @@ async function generateAudioWithOpenAI(text) {
   return audioBuffer;
 }
 
+async function generateAudioWithOllama(textToSpeak) {
+  // TODO: Implement Ollama TTS
+  console.log('Ollama TTS not implemented yet');
+  return await generateAudioLocally(textToSpeak);
+}
+
 
 /**
  * Função principal que gera e envia o áudio, escolhendo o provedor
- * com base na variável de ambiente TTS_PROVIDER.
+ * com base na variável de ambiente AI_PROVIDER.
  */
-export default async function generateAudio(text) {
+export default async function generateAudio(textToSpeak) {
   await ensureTempDirExists();
 
   try {
-    console.log(`Iniciando geração de áudio para: "${text}"`);
+    console.log(`Iniciando geração de áudio para: "${textToSpeak}"`);
     
     let audioBuffer;
-    const provider = process.env.TTS_PROVIDER || 'local';
+    const provider = process.env.AI_PROVIDER || 'local';
 
     // Roteador: escolhe qual função de geração de áudio usar
     switch (provider) {
       case 'openai':
-        audioBuffer = await generateAudioWithOpenAI(text);
+        audioBuffer = await generateAudioWithOpenAI(textToSpeak);
+        break;
+      case 'ollama':
+        audioBuffer = await generateAudioWithOllama(textToSpeak);
         break;
       case 'local':
       default:
-        audioBuffer = await generateAudioLocally(text);
+        audioBuffer = await generateAudioLocally(textToSpeak);
         break;
     }
 
