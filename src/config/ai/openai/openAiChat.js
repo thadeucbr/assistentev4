@@ -23,7 +23,7 @@ function sanitizeMessages(messages) {
 }
 
 export default async function openAiChat(chatMessages, toolsParam) {
-  console.log('openAiChat', chatMessages);
+  // console.log('openAiChat', chatMessages);
   chatMessages = sanitizeMessages(chatMessages);
   if (!OPENAI_KEY) {
     throw new Error('Missing OPENAI_API_KEY environment variable');
@@ -56,6 +56,6 @@ export default async function openAiChat(chatMessages, toolsParam) {
   }
 
   const { choices } = await response.json();
-  console.log('OpenAI response:', choices);
+  // console.log('OpenAI response:', choices);
   return choices[0];
 }

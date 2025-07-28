@@ -51,7 +51,7 @@ export default async function inferInteractionStyle(userMessage) {
   const result = await retryAiJsonCall(makeAiCall, 3, 1000);
   
   if (result.success) {
-    console.log('Estilo de interação inferido com sucesso:', result.data);
+    // console.log('Estilo de interação inferido com sucesso:', result.data);
     return result.data;
   } else {
     console.warn('Todas as tentativas de inferir estilo de interação falharam. Usando estilo padrão.');

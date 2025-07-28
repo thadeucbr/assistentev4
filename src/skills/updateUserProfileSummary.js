@@ -66,7 +66,7 @@ export default async function updateUserProfileSummary(userId, conversationHisto
     
     if (result.success) {
       parsedSummary = result.data;
-      console.log('JSON parseado com sucesso:', parsedSummary);
+      // console.log('JSON parseado com sucesso:', parsedSummary);
     } else {
       console.warn('Todas as tentativas de obter JSON válido para o resumo do perfil falharam. Usando fallback.');
       // Usar o conteúdo bruto como summary se disponível
