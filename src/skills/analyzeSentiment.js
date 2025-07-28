@@ -1,5 +1,5 @@
 
-import chatAi from '../config/ai/chat.ai.js';
+import { lightChatAi } from '../config/ai/chat.ai.js';
 import { extractContent } from '../utils/aiResponseUtils.js';
 
 const SENTIMENT_ANALYSIS_PROMPT = {
@@ -13,7 +13,7 @@ export default async function analyzeSentiment(text) {
       SENTIMENT_ANALYSIS_PROMPT,
       { role: 'user', content: text }
     ];
-    const response = await chatAi(messages, []);
+    const response = await lightChatAi(messages);
     
     // Extrair o conteúdo usando a função utilitária
     const content = extractContent(response);

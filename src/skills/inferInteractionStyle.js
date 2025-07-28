@@ -1,4 +1,4 @@
-import chatAi from '../config/ai/chat.ai.js';
+import { lightChatAi } from '../config/ai/chat.ai.js';
 import { retryAiJsonCall } from '../utils/aiResponseUtils.js';
 
 const SYSTEM_PROMPT = {
@@ -44,7 +44,7 @@ export default async function inferInteractionStyle(userMessage) {
       });
     }
 
-    return await chatAi(messages, []);
+    return await lightChatAi(messages);
   };
 
   // Usar a função de retry com JSON

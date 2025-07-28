@@ -144,12 +144,19 @@ export default async function processMessage(message) {
       if (messagesToSummarize.length > 0) {
         console.log(`[ProcessMessage] 📚 Sumarizando mensagens antigas para LTM... - ${new Date().toISOString()}`);
         const summaryContent = messagesToSummarize.map(m => m.content).join('\n');
-        const summaryResponse = await chatModel.invoke([
-          { role: 'system', content: 'Resuma o seguinte trecho de conversa de forma concisa, focando nos fatos e informações importantes.' },
-          { role: 'user', content: summaryContent }
-        ]);
-        LtmService.summarizeAndStore(userId, summaryResponse.content)
-            .catch(err => console.error(`[ProcessMessage] Erro ao sumarizar para LTM em background: ${err}`));
+        // Execute summarization and storage in the background
+        (async () => {
+          try {
+            const summaryResponse = await chatModel.invoke([
+              { role: 'system', content: 'Resuma o seguinte trecho de conversa de forma concisa, focando nos fatos e informações importantes.' },
+              { role: 'user', content: summaryContent }
+            ]);
+            await LtmService.summarizeAndStore(userId, summaryResponse.content);
+            console.log(`[ProcessMessage] ✅ Sumarização LTM em background concluída.`);
+          } catch (err) {
+            console.error(`[ProcessMessage] Erro ao sumarizar para LTM em background: ${err}`);
+          }
+        })();
       }
 
       messages = [...hotMessages, ...keptWarmMessages.map(m => ({ role: m.role, content: m.content }))];
