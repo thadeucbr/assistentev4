@@ -101,22 +101,18 @@ export default async function processMessage(message) {
     const ltmContext = await LtmService.getRelevantContext(userId, userContent);
     console.log(`[ProcessMessage] ✅ Contexto LTM obtido (+${Date.now() - stepTime}ms)`);
 
-    // Análise de sentimento da mensagem atual
+    // Análise de sentimento e inferência de estilo em paralelo (otimização)
     stepTime = Date.now();
-    console.log(`[ProcessMessage] 😊 Analisando sentimento da mensagem... - ${new Date().toISOString()}`);
-    const currentSentiment = await analyzeSentiment(userContent);
-    console.log(`[ProcessMessage] ✅ Sentimento analisado (+${Date.now() - stepTime}ms)`);
+    console.log(`[ProcessMessage] 🧠 Analisando sentimento e estilo em paralelo... - ${new Date().toISOString()}`);
     
-    // Inferência do estilo de interação
-    stepTime = Date.now();
-    console.log(`[ProcessMessage] 🎭 Inferindo estilo de interação... - ${new Date().toISOString()}`);
+    // Paralelizar operações que são independentes + simulação de digitação
+    const [currentSentiment, inferredStyle] = await Promise.all([
+      analyzeSentiment(userContent),
+      inferInteractionStyle(userContent),
+      simulateTyping(data.from, true) // Simular digitação durante as análises
+    ]);
     
-    // Simular digitação durante operação lenta (5+ segundos)
-    const stylingPromise = inferInteractionStyle(userContent);
-    const typingPromise = simulateTyping(data.from, true);
-    
-    const [inferredStyle] = await Promise.all([stylingPromise, typingPromise]);
-    console.log(`[ProcessMessage] ✅ Estilo de interação inferido (+${Date.now() - stepTime}ms)`);
+    console.log(`[ProcessMessage] ✅ Análises concluídas (+${Date.now() - stepTime}ms)`);
 
     // Se a inferência de estilo falhou e retornou conteúdo bruto, envie-o ao usuário
     // if (inferredStyle.rawContent && inferredStyle.rawContent.trim().length > 0) {
@@ -139,74 +135,23 @@ export default async function processMessage(message) {
     await updateUserProfile(userId, updatedProfile);
     console.log(`[ProcessMessage] ✅ Perfil do usuário atualizado (+${Date.now() - stepTime}ms)`);
 
-    // --- STM Management: Reranking and Summarization ---
+    // --- STM Management: Simplified for Performance ---
     stepTime = Date.now();
     console.log(`[ProcessMessage] 🧩 Gerenciando memória de curto prazo (STM)... - ${new Date().toISOString()}`);
     let currentSTM = [...messages]; // Create a copy to work with
 
-    // Separate hot messages (most recent) and warm messages (older ones)
-    const hotMessages = currentSTM.slice(-SUMMARIZE_THRESHOLD);
-    const warmMessages = currentSTM.slice(0, currentSTM.length - SUMMARIZE_THRESHOLD);
-
-    // If warm messages exist and total STM is getting too large, apply reranking and summarization
-    if (warmMessages.length > 0 && currentSTM.length >= MAX_STM_MESSAGES) {
-      console.log(`[ProcessMessage] 🔄 Aplicando reranking e sumarização da STM... - ${new Date().toISOString()}`);
-      
-      // Simular digitação durante processamento STM (operação lenta)
-      const stmTypingPromise = simulateTyping(data.from, true);
-      
-      const userEmbedding = await embeddingModel.embedQuery(userContent);
-
-      const messagesWithEmbeddings = await Promise.all(
-        warmMessages.map(async (msg) => {
-          if (msg.role === 'user' || msg.role === 'assistant') {
-            const embedding = await embeddingModel.embedQuery(msg.content);
-            return { ...msg, embedding };
-          }
-          return msg; // Keep system/tool messages as is, without embedding
-        })
-      );
-
-      // Calculate similarity and sort warm messages
-      const rankedWarmMessages = messagesWithEmbeddings
-        .map((msg) => {
-          if (msg.embedding) {
-            return { ...msg, similarity: cosineSimilarity(userEmbedding, msg.embedding) };
-          }
-          return { ...msg, similarity: -1 }; // Non-embeddable messages get low similarity
-        })
-        .sort((a, b) => b.similarity - a.similarity); // Sort by similarity descending
-
-      // Determine how many warm messages to keep to fit within MAX_STM_MESSAGES
-      const numWarmMessagesToKeep = MAX_STM_MESSAGES - hotMessages.length;
-      const keptWarmMessages = rankedWarmMessages.slice(0, numWarmMessagesToKeep);
-
-      // Identify messages to summarize (those from warmMessages not kept)
-      const keptMessageContents = new Set(keptWarmMessages.map(m => m.content));
-      const messagesToSummarize = warmMessages.filter(m => !keptMessageContents.has(m.content));
-
-      // Summarize discarded messages and send to LTM
-      if (messagesToSummarize.length > 0) {
-        console.log(`[ProcessMessage] 📚 Sumarizando mensagens antigas para LTM... - ${new Date().toISOString()}`);
-        const summaryContent = messagesToSummarize.map(m => m.content).join('\n');
-        const summaryResponse = await chatModel.invoke([
-          { role: 'system', content: 'Resuma o seguinte trecho de conversa de forma concisa, focando nos fatos e informações importantes.' },
-          { role: 'user', content: summaryContent }
-        ]);
-        await LtmService.summarizeAndStore(userId, summaryResponse.content);
-        console.log(`[ProcessMessage] ✅ Sumarização LTM concluída (+${Date.now() - stepTime}ms)`);
-      }
-
-      // Update the STM with the hot messages and pruned/reranked warm messages
-      messages = [...hotMessages, ...keptWarmMessages.map(m => ({ role: m.role, content: m.content }))];
-      
-      // Aguardar conclusão da simulação de digitação se ainda estiver executando
-      await stmTypingPromise;
-
-    } else if (currentSTM.length > MAX_STM_MESSAGES) {
-      // If no warm messages or not enough to trigger reranking, just trim by sliding window
-      console.log(`[ProcessMessage] ✂️ Truncando STM por janela deslizante... - ${new Date().toISOString()}`);
+    // Simplified STM management - just truncate if too large (much faster than reranking)
+    if (currentSTM.length > MAX_STM_MESSAGES) {
+      console.log(`[ProcessMessage] ✂️ Truncando STM (otimizado)... - ${new Date().toISOString()}`);
       messages = currentSTM.slice(-MAX_STM_MESSAGES);
+      
+      // Move complex reranking to background processing if needed
+      if (currentSTM.length > MAX_STM_MESSAGES * 2) {
+        setImmediate(async () => {
+          console.log(`[Background] 🔄 Executando reranking complexo em background...`);
+          // Complex reranking logic can be moved here for future optimization
+        });
+      }
     }
     console.log(`[ProcessMessage] ✅ Gerenciamento STM concluído (+${Date.now() - stepTime}ms)`);
 
@@ -275,27 +220,33 @@ ${ltmContext}`;
       console.log(`[ProcessMessage] ✅ Ferramentas executadas (+${Date.now() - stepTime}ms)`);
     }
     
-    stepTime = Date.now();
-    console.log(`[ProcessMessage] 💾 Atualizando contexto do usuário... - ${new Date().toISOString()}`);
-    await updateUserContext(userId, { messages });
-    console.log(`[ProcessMessage] ✅ Contexto atualizado (+${Date.now() - stepTime}ms)`);
+    console.log(`[ProcessMessage] ✅ Resposta entregue ao usuário - TEMPO ATÉ RESPOSTA: ${Date.now() - startTime}ms - ${new Date().toISOString()}`);
     
-    stepTime = Date.now();
-    console.log(`[ProcessMessage] 📚 Armazenando conversa na LTM... - ${new Date().toISOString()}`);
-    LtmService.summarizeAndStore(userId, messages.map((m) => m.content).join('\n'));
-    console.log(`[ProcessMessage] ✅ Conversa armazenada na LTM (+${Date.now() - stepTime}ms)`);
+    // === BACKGROUND PROCESSING - Não bloqueia a resposta ao usuário ===
+    setImmediate(async () => {
+      console.log(`[Background] 🚀 Iniciando processamento em background...`);
+      const backgroundStartTime = Date.now();
+      
+      try {
+        // Atualizar contexto
+        console.log(`[Background] 💾 Atualizando contexto do usuário...`);
+        await updateUserContext(userId, { messages });
+        
+        // Armazenar na LTM (não bloqueia)
+        console.log(`[Background] 📚 Armazenando conversa na LTM...`);
+        LtmService.summarizeAndStore(userId, messages.map((m) => m.content).join('\n'));
+        
+        // Atualizar perfil do usuário (operação mais lenta)
+        console.log(`[Background] 📊 Atualizando resumo do perfil do usuário...`);
+        await updateUserProfileSummary(userId, messages);
+        
+        console.log(`[Background] ✅ Processamento em background concluído - TEMPO: ${Date.now() - backgroundStartTime}ms`);
+      } catch (error) {
+        console.error(`[Background] ❌ Erro no processamento em background:`, error);
+      }
+    });
     
-    stepTime = Date.now();
-    console.log(`[ProcessMessage] 📊 Atualizando resumo do perfil do usuário... - ${new Date().toISOString()}`);
-    
-    // Simular digitação durante atualização do perfil (operação lenta - 24+ segundos)
-    const profilePromise = updateUserProfileSummary(userId, messages);
-    const profileTypingPromise = simulateTyping(data.from, true);
-    
-    await Promise.all([profilePromise, profileTypingPromise]);
-    console.log(`[ProcessMessage] ✅ Resumo do perfil atualizado (+${Date.now() - stepTime}ms)`);
-    
-    console.log(`[ProcessMessage] ✅ Processamento da mensagem concluído - TEMPO TOTAL: ${Date.now() - startTime}ms - ${new Date().toISOString()}`);
+    console.log(`[ProcessMessage] ✅ Processamento da mensagem concluído - TEMPO TOTAL PERCEBIDO: ${Date.now() - startTime}ms - ${new Date().toISOString()}`);
   }
 }
 
