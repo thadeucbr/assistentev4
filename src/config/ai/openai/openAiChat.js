@@ -32,15 +32,16 @@ export default async function openAiChat(chatMessages, toolsParam) {
   const body = {
     model: OPENAI_MODEL,
     messages: chatMessages,
-    function_call: 'auto'
   };
 
   if (toolsParam !== undefined && toolsParam.length === 0) {
     // Do nothing, functions property will be omitted
   } else if (toolsParam) {
     body.functions = toolsParam;
-  } else {
+    body.function_call = 'auto';
+  } else if (tools && tools.length > 0) {
     body.functions = tools;
+    body.function_call = 'auto';
   }
   const response = await fetch(OPENAI_URL, {
     method: 'POST',
