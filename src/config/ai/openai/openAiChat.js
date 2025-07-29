@@ -15,6 +15,7 @@ function sanitizeMessages(messages) {
     if (message.role === 'assistant' && message.tool_calls) {
       message.tool_calls = message.tool_calls.map(tc => ({
         ...tc,
+        id: tc.function.name, // Adding id to each tool_call
         type: 'function' // Ensuring 'type' is always 'function'
       }));
     }
