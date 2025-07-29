@@ -5,32 +5,53 @@ const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 function sanitizeMessages(messages) {
-  return messages.map(m => {
-    const message = { ...m };
-    if (message.role === 'function') {
-      message.role = 'tool';
-      message.tool_call_id = message.name; // Preserving the original name as tool_call_id
-    }
-    // Handling nested tool_calls within assistant messages
-    if (message.role === 'assistant' && message.tool_calls) {
-      message.tool_calls = message.tool_calls.map(tc => {
-        if (tc.function && typeof tc.function.arguments === 'object') {
-          tc.function.arguments = JSON.stringify(tc.function.arguments);
-        }
-        return {
-          ...tc,
-          id: tc.id || tc.function.name, // Adding id to each tool_call
-          type: 'function' // Ensuring 'type' is always 'function'
-        };
-      });
-    }
-    if (typeof message.content !== 'string' && message.content !== null) {
-      message.content = JSON.stringify(message.content);
-    } else if (message.content === null) {
-      message.content = '';
-    }
-    return message;
-  });
+  const sanitized = messages
+    .map(m => {
+      const message = { ...m };
+
+      // Standardize tool calls
+      if (message.role === 'assistant' && message.tool_calls) {
+        message.tool_calls = message.tool_calls.map(tc => {
+          // Ollama fallback might not have all properties
+          const functionName = tc.function?.name || tc.name;
+          let functionArguments = tc.function?.arguments || tc.arguments;
+
+          if (typeof functionArguments === 'object') {
+            functionArguments = JSON.stringify(functionArguments);
+          }
+
+          return {
+            id: tc.id || functionName,
+            type: 'function',
+            function: {
+              name: functionName,
+              arguments: functionArguments
+            }
+          };
+        });
+      }
+
+      // Standardize function/tool role
+      if (message.role === 'function') {
+        message.role = 'tool';
+        message.tool_call_id = message.name;
+      }
+
+      // Ensure content is a string
+      if (typeof message.content !== 'string' && message.content !== null) {
+        message.content = JSON.stringify(message.content);
+      } else if (message.content === null) {
+        message.content = '';
+      }
+
+      return message;
+    })
+    .filter(m => {
+      // Filter out empty assistant messages that don't have tool calls
+      return !(m.role === 'assistant' && !m.content && !m.tool_calls);
+    });
+
+  return sanitized;
 }
 export default async function openAiChat(chatMessages, toolsParam) {
   try {
