@@ -13,14 +13,21 @@ function sanitizeMessages(messages) {
     }
     // Handling nested tool_calls within assistant messages
     if (message.role === 'assistant' && message.tool_calls) {
-      message.tool_calls = message.tool_calls.map(tc => ({
-        ...tc,
-        id: tc.function.name, // Adding id to each tool_call
-        type: 'function' // Ensuring 'type' is always 'function'
-      }));
+      message.tool_calls = message.tool_calls.map(tc => {
+        if (tc.function && typeof tc.function.arguments === 'object') {
+          tc.function.arguments = JSON.stringify(tc.function.arguments);
+        }
+        return {
+          ...tc,
+          id: tc.id || tc.function.name, // Adding id to each tool_call
+          type: 'function' // Ensuring 'type' is always 'function'
+        };
+      });
     }
-    if (typeof message.content !== 'string') {
+    if (typeof message.content !== 'string' && message.content !== null) {
       message.content = JSON.stringify(message.content);
+    } else if (message.content === null) {
+      message.content = '';
     }
     return message;
   });
