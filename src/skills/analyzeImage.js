@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import logError from '../utils/logger.js';
 
 async function getBase64Image(id) {
   if (!id) {
@@ -28,6 +29,7 @@ async function getBase64Image(id) {
       return false;
     }
   } catch (err) {
+    logError(err, `getBase64Image - Failed to get base64 image for id: ${id}`);
     console.error('getBase64Image exception:', err);
     return false;
   }
@@ -120,6 +122,7 @@ export default async function analyzeImage({ id, prompt = 'Descreva detalhadamen
       return await analyzeImageWithOllama(base64Image, prompt);
     }
   } catch (err) {
+    logError(err, `analyzeImage - Failed to analyze image with prompt: "${prompt}"`);
     return { error: err.message || 'Erro desconhecido', stack: err.stack || undefined };
   }
 }

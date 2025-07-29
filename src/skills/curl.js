@@ -1,3 +1,5 @@
+import logError from '../utils/logger.js';
+
 /**
  * Faz uma requisição HTTP flexível (GET, POST, etc) para uma URL, podendo enviar headers e corpo customizados.
  * Use para acessar APIs públicas ou endpoints que retornam dados estruturados, como JSON.
@@ -40,12 +42,14 @@ export default async function curl({ url, method = 'GET', headers = {}, body = n
       try {
         data = await response.json();
       } catch (jsonErr) {
+        logError(jsonErr, `curl - Failed to parse JSON response from ${url}`);
         data = '[erro ao processar JSON: ' + (jsonErr.message || 'desconhecido') + ']';
       }
     } else if (contentType.includes('text/plain')) {
       try {
         data = await response.text();
       } catch (txtErr) {
+        logError(txtErr, `curl - Failed to parse text response from ${url}`);
         data = '[erro ao processar texto: ' + (txtErr.message || 'desconhecido') + ']';
       }
     } else {
@@ -54,6 +58,7 @@ export default async function curl({ url, method = 'GET', headers = {}, body = n
     return { url, status: response.status, headers: Object.fromEntries(response.headers.entries()), data };
   } catch (err) {
     if (timer) clearTimeout(timer);
+    logError(err, `curl - Failed to make HTTP request to ${url}`);
     return { url, error: err.message || 'Erro desconhecido', code: err.code || undefined, stack: err.stack || undefined };
   }
 }

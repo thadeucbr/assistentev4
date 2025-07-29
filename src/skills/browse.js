@@ -1,5 +1,6 @@
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import logError from '../utils/logger.js';
 puppeteer.use(StealthPlugin());
 
 // Helper para encontrar o caminho do executável do Chrome
@@ -68,6 +69,7 @@ export default async function browse({ url }) {
         retries++;
         await sleep(2000); // Espera 2 segundos antes de tentar novamente
       } else {
+        logError(err, `browse - Failed to browse URL: ${url}`);
         return { url, error: err.message || 'Erro desconhecido', stack: err.stack || undefined };
       }
     }

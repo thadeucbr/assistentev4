@@ -1,5 +1,6 @@
 import * as fs from 'fs/promises';
 import { embeddingModel } from './langchain.js';
+import logError from '../utils/logger.js';
 
 const VECTOR_STORE_DIR = './vector_store';
 
@@ -29,6 +30,7 @@ async function loadVectorStore(userId) {
       // File not found, return empty store
       return [];
     }
+    logError(error, `loadVectorStore - Failed to load vector store for user ${userId}`);
     console.error(`Error loading vector store for user ${userId}:`, error);
     return [];
   }

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import logError from '../utils/logger.js';
 
 export default async function sendImage(recipient, base64Image, prompt) {
     try {
@@ -35,6 +36,7 @@ export default async function sendImage(recipient, base64Image, prompt) {
         console.log("Responase:", response.data);
         return response.data;
     } catch (error) {
+        logError(error, `sendImage - Failed to send image to ${recipient}`);
         console.error("Error sending image:", error.response ? error.response.data : error.message);
     }
 }

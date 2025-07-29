@@ -1,4 +1,5 @@
 import { MongoClient } from 'mongodb';
+import logError from '../../utils/logger.js';
 
 let client;
 let db;
@@ -13,6 +14,7 @@ export async function connectToDb() {
     db = client.db(dbName);
     return db;
   } catch (err) {
+    logError(err, 'connectToDb - Failed to connect to MongoDB');
     return JSON.stringify(err)
   }
 }

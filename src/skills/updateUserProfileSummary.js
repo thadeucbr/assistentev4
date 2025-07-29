@@ -2,6 +2,7 @@
 import chatAi from '../config/ai/chat.ai.js';
 import { getUserProfile, updateUserProfile } from '../repository/userProfileRepository.js';
 import { retryAiJsonCall } from '../utils/aiResponseUtils.js';
+import logError from '../utils/logger.js';
 
 const SUMMARY_PROMPT = {
   role: 'system',
@@ -89,6 +90,7 @@ export default async function updateUserProfileSummary(userId, conversationHisto
     await updateUserProfile(userId, updatedProfile);
 
   } catch (error) {
+    logError(error, `updateUserProfileSummary - Failed to update profile for user: ${userId}`);
     console.error('Erro ao atualizar o resumo do perfil do usuário:', error);
   }
 }

@@ -1,4 +1,5 @@
 import puppeteer from 'puppeteer-core';
+import logError from '../utils/logger.js';
 
 // Helper para encontrar o caminho do executável do Chrome
 function getChromeExecutablePath() {
@@ -58,6 +59,7 @@ export default async function webSearch({ query }) {
     return { results: searchResults };
 
   } catch (error) {
+    logError(error, `webSearch - Failed to perform web search for query: "${query}"`);
     console.error('Error during Bing web search:', error);
     return { error: 'Failed to perform web search.', details: error.message };
   } finally {

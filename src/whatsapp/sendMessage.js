@@ -1,4 +1,5 @@
 import axios from 'axios';
+import logError from '../utils/logger.js';
 
 const sendMessage = async (to, content) => {
   const url = `${process.env.WHATSAPP_URL}/sendText`;
@@ -22,6 +23,7 @@ const sendMessage = async (to, content) => {
     const response = await axios.post(url, data, options);
     // console.log(response.data);
   } catch (error) {
+    logError(error, `sendMessage - Failed to send message to ${to}`);
     console.error('Error:', error);
   }
 };

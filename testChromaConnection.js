@@ -2,6 +2,7 @@ import { ChromaClient } from 'chromadb';
 import 'dotenv/config'; // Carrega as variáveis de ambiente
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { Chroma } from '@langchain/community/vectorstores/chroma';
+import logError from './src/utils/logger.js';
 
 async function testChromaConnection() {
   const host = process.env.CHROMA_HOST;
@@ -61,6 +62,7 @@ Tentando excluir coleção: ${testCollectionName}`);
     console.log(`Coleção '${testCollectionName}' excluída com sucesso.`);
 
   } catch (error) {
+    logError(error, 'testChromaConnection - ChromaDB test failed');
     console.error('Erro ao conectar ou interagir com ChromaDB:', error.message);
     console.error('Detalhes do erro:', error);
   }

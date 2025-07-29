@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
+import logError from '../utils/logger.js';
 
 // Configura o ffmpeg (usado apenas pela geração local)
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
@@ -26,6 +27,7 @@ async function ensureTempDirExists() {
     if (error.code === 'ENOENT') {
       await fs.mkdir(TEMP_AUDIO_DIR);
     } else {
+      logError(error, 'ensureTempDirExists - Failed to ensure temp directory exists');
       throw error;
     }
   }
@@ -144,6 +146,7 @@ export default async function generateAudio(textToSpeak) {
     return { success: true, audioBuffer };
 
   } catch (error) {
+    logError(error, `generateAudio - Failed to generate audio with text: "${text}"`);
     console.error('Ocorreu um erro geral no processo de geração de áudio:', error.message);
     return { success: false, error: error.message };
   }

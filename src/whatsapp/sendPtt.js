@@ -1,4 +1,4 @@
-
+import logError from '../utils/logger.js';
 
 
 const SEND_PTT_ENDPOINT = 'http://192.168.1.239:8088/sendPtt';
@@ -38,6 +38,7 @@ export default async function sendPtt(recipientId, audioBuffer, quotedMsgId) {
     console.log('Mensagem de voz enviada com sucesso!');
     return { success: true, message: 'Áudio enviado com sucesso.' };
   } catch (error) {
+    logError(error, `sendPtt - Failed to send PTT to ${recipientId}`);
     console.error('Ocorreu um erro no processo de envio de áudio:', error.message);
     return { success: false, error: error.message };
   }

@@ -1,5 +1,6 @@
 import { connectToDb } from '../config/database/mongo.js';
 import parseScheduledTime from '../utils/parseScheduledTime.js';
+import logError from '../utils/logger.js';
 const COLLECTION = 'reminders';
 
 export async function getReminders(userId) {
@@ -31,6 +32,7 @@ export async function addReminder(userId, message, scheduledTime, title = '', de
     // Dependendo da versão do driver, pode ser necessário acessar result.ops[0] ou result.insertedId
     return { ...reminder, _id: result.insertedId };
   } catch (err) {
+    logError(err, `addReminder - Failed to add reminder for user ${userId}`);
     throw new Error(`Failed to add reminder: ${err.message}`);
   }
 }
@@ -47,6 +49,7 @@ export async function updateReminder(reminderId, updates) {
     
     return result.value;
   } catch (err) {
+    logError(err, `updateReminder - Failed to update reminder ${reminderId}`);
     throw new Error(`Failed to update reminder: ${err.message}`);
   }
 }
@@ -58,6 +61,7 @@ export async function deleteReminder(reminderId) {
     const result = await db.collection(COLLECTION).deleteOne({ _id: reminderId });
     return result.deletedCount > 0;
   } catch (err) {
+    logError(err, `deleteReminder - Failed to delete reminder ${reminderId}`);
     throw new Error(`Failed to delete reminder: ${err.message}`);
   }
 }
@@ -69,6 +73,7 @@ export async function deleteAllReminders(userId) {
     const result = await db.collection(COLLECTION).deleteMany({ userId });
     return result.deletedCount;
   } catch (err) {
+    logError(err, `deleteAllReminders - Failed to delete all reminders for user ${userId}`);
     throw new Error(`Failed to delete reminders: ${err.message}`);
   }
 }

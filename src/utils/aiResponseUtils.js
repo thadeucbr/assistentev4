@@ -1,3 +1,5 @@
+import logError from './logger.js';
+
 /**
  * Função auxiliar para normalizar as respostas dos diferentes provedores de IA
  * @param {object} response - Resposta bruta da API de IA
@@ -81,6 +83,7 @@ export function safeJsonParse(content) {
     
     return null;
   } catch (error) {
+    logError(error, 'safeJsonParse - Failed to parse JSON content');
     console.error('Erro ao fazer parse do JSON:', error);
     return null;
   }
@@ -114,6 +117,7 @@ export async function retryAiJsonCall(aiCallFunction, maxRetries = 3, delayMs = 
         await new Promise(resolve => setTimeout(resolve, delayMs));
       }
     } catch (error) {
+      logError(error, `retryAiJsonCall - AI call failed on attempt ${i + 1}`);
       console.error(`Tentativa ${i + 1} - Erro na chamada de IA:`, error);
       
       if (i < maxRetries - 1) {

@@ -1,6 +1,7 @@
 
 import chatAi from '../config/ai/chat.ai.js';
 import { extractContent } from '../utils/aiResponseUtils.js';
+import logError from '../utils/logger.js';
 
 const SENTIMENT_ANALYSIS_PROMPT = {
   role: 'system',
@@ -25,6 +26,7 @@ export default async function analyzeSentiment(text) {
       return 'neutro'; // Retorna neutro em caso de resposta inesperada
     }
   } catch (error) {
+    logError(error, `analyzeSentiment - Failed to analyze sentiment for text: "${text}"`);
     console.error('Erro ao analisar sentimento:', error);
     return 'neutro'; // Retorna neutro em caso de erro
   }

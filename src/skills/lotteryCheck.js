@@ -1,3 +1,5 @@
+import logError from '../utils/logger.js';
+
 export default async function lotteryCheck(modalidade, sorteio = '') {
   try {
     console.log(`Iniciando verificação de loteria para modalidade: ${modalidade}, sorteio: ${sorteio}`);
@@ -20,6 +22,7 @@ export default async function lotteryCheck(modalidade, sorteio = '') {
     
     return data;
   } catch (err) {
+    logError(err, `lotteryCheck - Failed to check lottery for modalidade: ${modalidade}, sorteio: ${sorteio}`);
     return { error: err.message || 'Erro desconhecido', stack: err.stack || undefined };
   }
 }
