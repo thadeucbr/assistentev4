@@ -4,28 +4,53 @@ import logError from '../../../utils/logger.js';
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
-function reorderMessages(messages) {
-  const reordered = [];
+function sanitizeAndReorderMessages(messages) {
   const toolMessages = {};
+  const sanitized = [];
 
-  // First, separate tool messages and other messages
-  for (const message of messages) {
-    if (message.role === 'tool') {
+  // First pass: sanitize and collect tool messages
+  for (const m of messages) {
+    const message = { ...m };
+
+    if (message.role === 'function') {
+      message.role = 'tool';
+      message.tool_call_id = message.name;
       toolMessages[message.tool_call_id] = message;
     } else {
-      reordered.push(message);
+      if (message.role === 'assistant' && message.tool_calls) {
+        message.tool_calls = message.tool_calls.map(tc => {
+          const functionName = tc.function?.name || tc.name;
+          let functionArguments = tc.function?.arguments || tc.arguments;
+          if (typeof functionArguments === 'object') {
+            functionArguments = JSON.stringify(functionArguments);
+          }
+          return {
+            id: tc.id || functionName,
+            type: 'function',
+            function: { name: functionName, arguments: functionArguments }
+          };
+        });
+      }
+      if (typeof message.content !== 'string' && message.content !== null) {
+        message.content = JSON.stringify(message.content);
+      } else if (message.content === null) {
+        message.content = '';
+      }
+      if (!(message.role === 'assistant' && !message.content && !message.tool_calls)) {
+        sanitized.push(message);
+      }
     }
   }
 
-  // Now, insert tool messages right after the corresponding tool_calls
+  // Second pass: insert tool messages
   const finalMessages = [];
-  for (const message of reordered) {
+  for (const message of sanitized) {
     finalMessages.push(message);
     if (message.role === 'assistant' && message.tool_calls) {
       for (const tc of message.tool_calls) {
         if (toolMessages[tc.id]) {
           finalMessages.push(toolMessages[tc.id]);
-          delete toolMessages[tc.id]; // Mark as inserted
+          delete toolMessages[tc.id];
         }
       }
     }
@@ -33,48 +58,9 @@ function reorderMessages(messages) {
 
   return finalMessages;
 }
+
 function sanitizeMessages(messages) {
-  const sanitized = messages
-    .map(m => {
-      const message = { ...m };
-
-      // Standardize tool calls
-      if (message.role === 'assistant' && message.tool_calls) {
-        message.tool_calls = message.tool_calls.map(tc => {
-          const functionName = tc.function?.name || tc.name;
-          let functionArguments = tc.function?.arguments || tc.arguments;
-
-          if (typeof functionArguments === 'object') {
-            functionArguments = JSON.stringify(functionArguments);
-          }
-
-          return {
-            id: tc.id || functionName,
-            type: 'function',
-            function: {
-              name: functionName,
-              arguments: functionArguments
-            }
-          };
-        });
-      }
-
-      if (message.role === 'function') {
-        message.role = 'tool';
-        message.tool_call_id = message.name;
-      }
-
-      if (typeof message.content !== 'string' && message.content !== null) {
-        message.content = JSON.stringify(message.content);
-      } else if (message.content === null) {
-        message.content = '';
-      }
-
-      return message;
-    })
-    .filter(m => !(m.role === 'assistant' && !m.content && !m.tool_calls));
-
-  return reorderMessages(sanitized);
+  return sanitizeAndReorderMessages(messages);
 }
 export default async function openAiChat(chatMessages, toolsParam) {
   try {
