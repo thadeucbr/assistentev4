@@ -5,25 +5,28 @@ const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 function sanitizeMessages(messages) {
-  // console.log('Sanitizing messages:', messages);
-  const sanitized = messages.map(m => {
+  return messages.map(m => {
     const message = { ...m };
     if (message.role === 'function') {
       message.role = 'tool';
-      message.tool_call_id = message.name;
+      message.tool_call_id = message.name; // Preserving the original name as tool_call_id
+    }
+    // Handling nested tool_calls within assistant messages
+    if (message.role === 'assistant' && message.tool_calls) {
+      message.tool_calls = message.tool_calls.map(tc => ({
+        ...tc,
+        type: 'function' // Ensuring 'type' is always 'function'
+      }));
     }
     if (typeof message.content !== 'string') {
       message.content = JSON.stringify(message.content);
     }
     return message;
   });
-  // console.log('Sanitized messages:', sanitized);
-  return sanitized;
 }
-
-
 export default async function openAiChat(chatMessages, toolsParam) {
   try {
+    // console.log('openAiChat toolsParam:', toolsParam);
     chatMessages = sanitizeMessages(chatMessages);
     if (!OPENAI_KEY) {
       throw new Error('Missing OPENAI_API_KEY environment variable');
@@ -31,17 +34,17 @@ export default async function openAiChat(chatMessages, toolsParam) {
 
     const body = {
       model: OPENAI_MODEL,
-      messages: chatMessages,
-      tool_choice: 'auto'
+      messages: chatMessages
     };
 
-    if (toolsParam !== undefined && toolsParam.length === 0) {
-      // Do nothing, tools property will be omitted
-    } else if (toolsParam) {
+    if (toolsParam && toolsParam.length > 0) {
       body.tools = toolsParam;
-    } else {
-      body.tools = tools;
+      body.tool_choice = 'auto';
+    } else if (toolsParam === undefined) {
+      body.tools = tools; // Default tools
+      body.tool_choice = 'auto';
     }
+    // console.log('openAiChat body:', JSON.stringify(body, null, 2));
     const response = await fetch(OPENAI_URL, {
       method: 'POST',
       headers: {
