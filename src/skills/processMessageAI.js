@@ -291,71 +291,83 @@ async function toolCall(messages, response, tools, from, id, userContent) {
       const args = toolCall.function.arguments;
       let stepTime = Date.now();
       
-      if (toolCall.function.name === 'generate_image') {
+      const toolName = toolCall.function.name;
+      const toolId = toolCall.id;
+
+      let toolContent = '';
+
+      if (toolName === 'generate_image') {
         console.log(`[ToolCall] 🎨 Gerando imagem... - ${new Date().toISOString()}`);
         const image = await generateImage({ ...args });
         if (image.error) {
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Erro ao gerar imagem: ${image.error}` });
+          toolContent = `Erro ao gerar imagem: ${image.error}`;
         } else {
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Image generated and sent: "${args.prompt}"` });
           await sendImage(from, image, args.prompt);
+          toolContent = `Image generated and sent: "${args.prompt}"`;
         }
         console.log(`[ToolCall] ✅ Imagem processada (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'send_message') {
+      } else if (toolName === 'send_message') {
         console.log(`[ToolCall] 💬 Enviando mensagem... - ${new Date().toISOString()}`);
-        newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Mensagem enviada ao usuário: "${args.content}"` });
         await sendMessage(from, args.content);
-        directCommunicationOccurred = true; // Set flag
+        toolContent = `Mensagem enviada ao usuário: "${args.content}"`;
+        directCommunicationOccurred = true;
         console.log(`[ToolCall] ✅ Mensagem enviada (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'analyze_image') {
+      } else if (toolName === 'analyze_image') {
         console.log(`[ToolCall] 🔍 Analisando imagem... - ${new Date().toISOString()}`);
-        const analysis = await analyzeImage({ id, prompt: args.prompt });
-        newMessages.push({ name: toolCall.function.name, role: 'tool', content: analysis });
+        toolContent = await analyzeImage({ id, prompt: args.prompt });
         console.log(`[ToolCall] ✅ Imagem analisada (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'reminder') {
+      } else if (toolName === 'reminder') {
         console.log(`[ToolCall] ⏰ Processando lembrete... - ${new Date().toISOString()}`);
         if (args.action === 'create') {
           const newReminder = await addReminder(from, args.message, args.scheduledTime);
           scheduleReminder(newReminder);
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Lembrete criado: ${JSON.stringify(newReminder)}` });
+          toolContent = `Lembrete criado: ${JSON.stringify(newReminder)}`;
         } else if (args.action === 'list') {
           const reminders = await getReminders(from);
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Seus lembretes: ${JSON.stringify(reminders)}` });
+          toolContent = `Seus lembretes: ${JSON.stringify(reminders)}`;
         }
         console.log(`[ToolCall] ✅ Lembrete processado (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'lottery_check') {
+      } else if (toolName === 'lottery_check') {
         console.log(`[ToolCall] 🎲 Verificando loteria... - ${new Date().toISOString()}`);
-        const result = await lotteryCheck(args.modalidade, args.sorteio);
-        newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
+        toolContent = JSON.stringify(await lotteryCheck(args.modalidade, args.sorteio));
         console.log(`[ToolCall] ✅ Loteria verificada (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'browse') {
+      } else if (toolName === 'browse') {
         console.log(`[ToolCall] 🌐 Navegando na web... - ${new Date().toISOString()}`);
         const result = await browse({ url: args.url });
         if (result.error && result.error.includes('net::ERR_NAME_NOT_RESOLVED')) {
           console.warn(`[ToolCall] ⚠️ Browse falhou para ${args.url}, tentando busca web como fallback`);
           const webSearchResult = await webSearch({ query: userContent });
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Browse failed. Attempted web search with query "${userContent}": ${JSON.stringify(webSearchResult)}` });
+          toolContent = `Browse failed. Attempted web search with query "${userContent}": ${JSON.stringify(webSearchResult)}`;
         } else {
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
+          toolContent = JSON.stringify(result);
         }
         console.log(`[ToolCall] ✅ Navegação web concluída (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'web_search') {
+      } else if (toolName === 'web_search') {
         console.log(`[ToolCall] 🔍 Buscando na web... - ${new Date().toISOString()}`);
-        const result = await webSearch({ query: args.query });
-        newMessages.push({ name: 'web_search', role: 'tool', content: JSON.stringify(result) });
+        toolContent = JSON.stringify(await webSearch({ query: args.query }));
         console.log(`[ToolCall] ✅ Busca web concluída (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'generate_audio') {
+      } else if (toolName === 'generate_audio') {
         console.log(`[ToolCall] 🔊 Gerando áudio... - ${new Date().toISOString()}`);
         const audioResult = await generateAudio(args.textToSpeak);
         if (audioResult.success) {
           await sendPtt(from, audioResult.audioBuffer, id);
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Áudio gerado e enviado: "${args.textToSpeak}"` });
-          directCommunicationOccurred = true; // Set flag
+          toolContent = `Áudio gerado e enviado: "${args.textToSpeak}"`;
+          directCommunicationOccurred = true;
         } else {
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Erro ao gerar áudio: ${audioResult.error}` });
+          toolContent = `Erro ao gerar áudio: ${audioResult.error}`;
         }
         console.log(`[ToolCall] ✅ Áudio processado (+${Date.now() - stepTime}ms)`);
+      } else {
+        console.warn(`[ToolCall] ⚠️ Ferramenta desconhecida: ${toolName}`);
+        toolContent = `Ferramenta desconhecida: ${toolName}`;
       }
+
+      newMessages.push({
+        role: 'tool',
+        tool_call_id: toolId,
+        name: toolName, // Opcional, mas bom para depuração
+        content: toolContent,
+      });
     }
 
     // If a direct communication tool was used, we are done with this turn.
