@@ -4,6 +4,35 @@ import logError from '../../../utils/logger.js';
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
+function reorderMessages(messages) {
+  const reordered = [];
+  const toolMessages = {};
+
+  // First, separate tool messages and other messages
+  for (const message of messages) {
+    if (message.role === 'tool') {
+      toolMessages[message.tool_call_id] = message;
+    } else {
+      reordered.push(message);
+    }
+  }
+
+  // Now, insert tool messages right after the corresponding tool_calls
+  const finalMessages = [];
+  for (const message of reordered) {
+    finalMessages.push(message);
+    if (message.role === 'assistant' && message.tool_calls) {
+      for (const tc of message.tool_calls) {
+        if (toolMessages[tc.id]) {
+          finalMessages.push(toolMessages[tc.id]);
+          delete toolMessages[tc.id]; // Mark as inserted
+        }
+      }
+    }
+  }
+
+  return finalMessages;
+}
 function sanitizeMessages(messages) {
   const sanitized = messages
     .map(m => {
@@ -12,7 +41,6 @@ function sanitizeMessages(messages) {
       // Standardize tool calls
       if (message.role === 'assistant' && message.tool_calls) {
         message.tool_calls = message.tool_calls.map(tc => {
-          // Ollama fallback might not have all properties
           const functionName = tc.function?.name || tc.name;
           let functionArguments = tc.function?.arguments || tc.arguments;
 
@@ -31,13 +59,11 @@ function sanitizeMessages(messages) {
         });
       }
 
-      // Standardize function/tool role
       if (message.role === 'function') {
         message.role = 'tool';
         message.tool_call_id = message.name;
       }
 
-      // Ensure content is a string
       if (typeof message.content !== 'string' && message.content !== null) {
         message.content = JSON.stringify(message.content);
       } else if (message.content === null) {
@@ -46,12 +72,9 @@ function sanitizeMessages(messages) {
 
       return message;
     })
-    .filter(m => {
-      // Filter out empty assistant messages that don't have tool calls
-      return !(m.role === 'assistant' && !m.content && !m.tool_calls);
-    });
+    .filter(m => !(m.role === 'assistant' && !m.content && !m.tool_calls));
 
-  return sanitized;
+  return reorderMessages(sanitized);
 }
 export default async function openAiChat(chatMessages, toolsParam) {
   try {
