@@ -84,6 +84,13 @@ export default async function processMessage(message) {
     const userContent = (data.body || (data.type === 'image' ? 'Analyze this image' : ''))
       .replace(process.env.WHATSAPP_NUMBER, '')
       .trim();
+    
+    // Validate userContent early to prevent embedding errors
+    if (!userContent || userContent.length === 0) {
+      console.warn(`[ProcessMessage] ⚠️ userContent is empty, skipping processing`);
+      return;
+    }
+    
     const userId = data.from.replace('@c.us', '');
     
     stepTime = Date.now();
@@ -114,11 +121,16 @@ export default async function processMessage(message) {
       
       const stmTypingPromise = simulateTyping(data.from, true);
       
+      // Ensure userContent is not null or empty before creating embedding
+      if (!userContent || typeof userContent !== 'string' || userContent.trim().length === 0) {
+        throw new Error('User content is null, undefined, or empty');
+      }
+      
       const userEmbedding = await embeddingModel.embedQuery(userContent);
 
       const messagesWithEmbeddings = await Promise.all(
         warmMessages.map(async (msg) => {
-          if (msg.role === 'user' || msg.role === 'assistant') {
+          if ((msg.role === 'user' || msg.role === 'assistant') && msg.content && typeof msg.content === 'string' && msg.content.trim().length > 0) {
             const embedding = await embeddingModel.embedQuery(msg.content);
             return { ...msg, embedding };
           }
