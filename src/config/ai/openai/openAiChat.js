@@ -34,6 +34,8 @@ export default async function openAiChat(chatMessages, toolsParam) {
     messages: chatMessages,
   };
 
+  console.log('toolsParam:', toolsParam);
+  console.log('imported tools:', tools);
   if (toolsParam !== undefined && toolsParam.length === 0) {
     // Do nothing, functions property will be omitted
   } else if (toolsParam) {
