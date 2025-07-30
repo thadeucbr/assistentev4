@@ -134,24 +134,31 @@ const SYSTEM_PROMPT = {
   role: 'system',
   content: `Você é um assistente de IA amigável e conciso. Sua principal forma de comunicação com o usuário é através da função 'send_message'.
 
-**REGRAS CRÍTICAS PARA COMUNICAÇÃO:**
+**REGRAS CRÍTICAS ANTI-SPAM:**
 1. **SEMPRE USE 'send_message':** Para qualquer texto que você queira enviar ao usuário, você DEVE OBRIGATORIAMENTE usar a função 'send_message'. NUNCA responda diretamente com texto no campo 'content' da sua resposta principal.
 
-2. **UMA MENSAGEM POR RESPOSTA:** Para conversas NORMAIS (saudações, perguntas simples, conversas casuais), use APENAS UMA função 'send_message' por resposta. Seja conciso e direto.
+2. **REGRA OURO - UMA MENSAGEM POR RESPOSTA:** Para conversas NORMAIS (saudações, perguntas simples, conversas casuais), use APENAS UMA função 'send_message' por resposta. Seja conciso e direto.
 
-3. **MÚLTIPLAS MENSAGENS APENAS QUANDO SOLICITADO:** 
-   - SOMENTE faça múltiplas chamadas de 'send_message' quando o usuário EXPLICITAMENTE solicitar (ex: "envie 5 piadas", "faça 3 sugestões", "divida em 2 mensagens").
-   - Para saudações simples como "Olá", "Oi", "Como está?", responda com UMA ÚNICA mensagem amigável.
+3. **BLOQUEIO RIGOROSO DE SPAM:**
+   - Para saudações como "Oi", "Olá", "Como está?" → SEMPRE responda com UMA ÚNICA mensagem completa
+   - NUNCA faça múltiplas chamadas de send_message para o mesmo conceito
+   - NUNCA repita a mesma informação em mensagens diferentes
+   - MÚLTIPLAS MENSAGENS SÓ são permitidas quando o usuário EXPLICITAMENTE solicitar números específicos (ex: "envie 3 piadas", "faça 5 sugestões")
 
-4. **NÃO RESPONDA DIRETAMENTE:** Se você tiver uma resposta para o usuário, mas não usar 'send_message', sua resposta NÃO SERÁ ENTREGUE. Isso é um erro crítico.
+4. **DETECÇÃO DE SOLICITAÇÃO MÚLTIPLA:**
+   - Solicitação válida: "Me conte 3 piadas", "Envie 5 dicas", "Faça 2 sugestões"
+   - NÃO é solicitação múltipla: "Oi", "Como está?", "Explique algo", "Me ajude"
 
-5. **EXECUÇÃO SEQUENCIAL:** Quando o usuário pedir múltiplas ações DIFERENTES (ex: "gere uma imagem, depois envie uma mensagem"), execute UMA ferramenta por vez.
+5. **NÃO RESPONDA DIRETAMENTE:** Se você tiver uma resposta para o usuário, mas não usar 'send_message', sua resposta NÃO SERÁ ENTREGUE.
 
-**EXEMPLOS DE USO CORRETO:**
-- Usuário: "Olá" → Resposta: UMA mensagem de saudação
-- Usuário: "Como você está?" → Resposta: UMA mensagem sobre como está
-- Usuário: "Me conte 3 piadas" → Resposta: TRÊS mensagens com piadas
-- Usuário: "Explique algo" → Resposta: UMA mensagem explicativa (mesmo que longa)
+**EXEMPLOS CORRETOS:**
+- Usuário: "Oi" → UMA mensagem: "Oi! Tudo bem? Como posso ajudar você hoje? 😊"
+- Usuário: "Como está?" → UMA mensagem: "Estou bem, obrigado! Pronto para ajudar. O que você precisa?"
+- Usuário: "Me conte 3 piadas" → TRÊS mensagens separadas com piadas
+- Usuário: "Explique fotossíntese" → UMA mensagem explicativa completa
+
+**EXEMPLOS INCORRETOS (SPAM):**
+- Usuário: "Oi" → ❌ Múltiplas mensagens: "Oi!" + "Como está?" + "Posso ajudar?"
 
 Para buscar informações na web, siga este processo em duas etapas:
 1. **Descubra:** Use a função 'web_search' com uma query de busca (ex: "melhores restaurantes em São Paulo") para encontrar URLs relevantes.
@@ -309,17 +316,22 @@ export default async function processMessage(message) {
       role: 'system',
       content: `CRÍTICO ANTI-SPAM: Esta é sua PRIMEIRA resposta para "${userContent}". 
 
-REGRA ABSOLUTA: Para saudações simples como "Olá", "Oi", "Como está?" → Responda com APENAS UMA função 'send_message' contendo uma resposta amigável e completa.
+ANÁLISE DA MENSAGEM: ${userContent.toLowerCase().trim().length <= 10 ? 'SAUDAÇÃO SIMPLES DETECTADA' : 'MENSAGEM NORMAL'}
+
+REGRA ABSOLUTA ANTI-SPAM:
+- Para saudações simples como "Oi", "Olá", "Como está?" → Responda com APENAS UMA função 'send_message' contendo uma resposta amigável e completa
+- Para qualquer pergunta ou conversação normal → UMA mensagem é suficiente
+- NUNCA faça múltiplas chamadas de send_message a menos que seja EXPLICITAMENTE solicitado com números (ex: "envie 3 piadas")
 
 EXEMPLO CORRETO para "Oi":
 - ✅ UMA chamada: send_message("Oi! Tudo bem? Como posso ajudar você hoje? 😊")
 
-EXEMPLO INCORRETO (SPAM):
-- ❌ MÚLTIPLAS chamadas: send_message("Oi!") + send_message("Como está?") + send_message("Posso ajudar?")
+EXEMPLOS INCORRETOS (SPAM BLOQUEADO):
+- ❌ send_message("Oi!") + send_message("Como está?") + send_message("Posso ajudar?")
+- ❌ send_message("Oi! Tudo bem?") + send_message("Como posso ajudar?")
+- ❌ send_message("Olá!") + send_message("Em que posso ajudar?")
 
-MÚLTIPLAS MENSAGENS SÃO PERMITIDAS APENAS se o usuário EXPLICITAMENTE solicitar (ex: "envie 3 piadas", "faça 2 sugestões").
-
-Seja natural, amigável e conciso em UMA ÚNICA mensagem.`
+REGRA: UMA mensagem completa e amigável é SEMPRE melhor que múltiplas mensagens fragmentadas.`
     };
     
     chatMessages.push(antiSpamPrompt);
@@ -339,7 +351,11 @@ Seja natural, amigável e conciso em UMA ÚNICA mensagem.`
     
     // VERIFICAÇÃO CRÍTICA ANTI-SPAM: Bloquear múltiplas send_message na primeira resposta
     if (response.message.tool_calls && response.message.tool_calls.length > 0) {
-      const sendMessageCalls = response.message.tool_calls.filter(tc => tc.function.name === 'send_message');
+      // Normalizar nomes de funções e contar send_message calls (incluindo variações com erro de digitação)
+      const sendMessageCalls = response.message.tool_calls.filter(tc => 
+        tc.function.name === 'send_message' || tc.function.name === 'ssend_message'
+      );
+      
       if (sendMessageCalls.length > 1) {
         const userRequestedMultiple = isMultipleMessagesRequested(userContent);
         
@@ -347,14 +363,32 @@ Seja natural, amigável e conciso em UMA ÚNICA mensagem.`
           console.log(`[ProcessMessage] 🚨 BLOQUEANDO SPAM NA PRIMEIRA RESPOSTA: ${sendMessageCalls.length} send_message calls para "${userContent}"`);
           console.log(`[ProcessMessage] 🛡️ Mantendo apenas a primeira mensagem para evitar spam.`);
           
-          // Manter apenas a primeira send_message call
-          const keptToolCalls = [sendMessageCalls[0]];
-          const otherToolCalls = response.message.tool_calls.filter(tc => tc.function.name !== 'send_message');
+          // Manter apenas a primeira send_message call (corrigindo nome se necessário)
+          const firstSendMessage = sendMessageCalls[0];
+          if (firstSendMessage.function.name === 'ssend_message') {
+            firstSendMessage.function.name = 'send_message';
+          }
+          
+          const keptToolCalls = [firstSendMessage];
+          const otherToolCalls = response.message.tool_calls.filter(tc => 
+            tc.function.name !== 'send_message' && tc.function.name !== 'ssend_message'
+          );
           
           response.message.tool_calls = [...keptToolCalls, ...otherToolCalls];
         } else {
           console.log(`[ProcessMessage] ✅ Múltiplas mensagens autorizadas pelo usuário: "${userContent}"`);
+          
+          // Corrigir nomes de função mesmo quando autorizado
+          sendMessageCalls.forEach(call => {
+            if (call.function.name === 'ssend_message') {
+              call.function.name = 'send_message';
+            }
+          });
         }
+      } else if (sendMessageCalls.length === 1 && sendMessageCalls[0].function.name === 'ssend_message') {
+        // Corrigir nome da função mesmo para chamada única
+        sendMessageCalls[0].function.name = 'send_message';
+        console.log(`[ProcessMessage] 🔧 Corrigido nome da função de 'ssend_message' para 'send_message'`);
       }
     }
     
@@ -403,54 +437,76 @@ Seja natural, amigável e conciso em UMA ÚNICA mensagem.`
 function isMultipleMessagesRequested(userContent) {
   const content = userContent.toLowerCase().trim();
   
-  // BLOQUEIO: Saudações simples NUNCA devem ser consideradas solicitações múltiplas
+  // BLOQUEIO RIGOROSO: Saudações e perguntas simples NUNCA devem ser consideradas solicitações múltiplas
   const simpleGreetings = [
+    // Saudações básicas
     /^(oi|olá|ola|hello|hi|hey|bom dia|boa tarde|boa noite|e aí|eai|iae)\.?!?$/,
+    
+    // Perguntas sobre estado
     /^(como (você )?está\??)\.?!?$/,
     /^(tudo (bem|bom)\??)\.?!?$/,
     /^(beleza\??)\.?!?$/,
+    /^(como vai\??)\.?!?$/,
+    /^(td bem\??)\.?!?$/,
+    
+    // Cumprimentos expandidos
+    /^(oi,?\s*(tudo bem|como está|beleza)\??)\.?!?$/,
+    /^(olá,?\s*(tudo bem|como está|beleza)\??)\.?!?$/,
+    
+    // Variações comuns
+    /^(oie?|oiii+|oiee+)\.?!?$/,
+    /^(hii+|hello+)\.?!?$/,
+    
+    // Combinações simples
+    /^(oi|olá)\s*(aí|pessoal|galera)\.?!?$/,
   ];
   
-  // Se for uma saudação simples, NUNCA permitir múltiplas mensagens
-  if (simpleGreetings.some(pattern => pattern.test(content))) {
-    console.log(`[MultipleMessages] 🚫 SAUDAÇÃO SIMPLES DETECTADA: "${userContent}" - BLOQUEANDO múltiplas mensagens`);
+  // BLOQUEIO EXTRA: Frases introdutórias comuns que são simplesmente conversacionais
+  const conversationalPhrases = [
+    /^(me ajuda|ajuda aí|preciso de ajuda|pode me ajudar)\.?!?$/,
+    /^(o que você pode fazer|o que sabe fazer)\.?!?$/,
+    /^(como funciona|como usar|como posso usar)\.?!?$/,
+    /^(quem é você|quem você é|o que é você)\.?!?$/,
+  ];
+  
+  // Se for uma saudação simples ou frase conversacional, NUNCA permitir múltiplas mensagens
+  if (simpleGreetings.some(pattern => pattern.test(content)) || 
+      conversationalPhrases.some(pattern => pattern.test(content))) {
+    console.log(`[MultipleMessages] 🚫 SAUDAÇÃO/FRASE SIMPLES DETECTADA: "${userContent}" - BLOQUEANDO múltiplas mensagens`);
     return false;
   }
   
-  // Padrões que indicam solicitação explícita de múltiplas mensagens
+  // PADRÕES SUPER ESPECÍFICOS: Só permitir múltiplas mensagens para solicitações MUITO explícitas
   const explicitPatterns = [
-    // Números específicos - deve ser muito explícito
-    /\b(\d+)\s*(mensagens?|piadas?|historias?|histórias?|exemplos?|sugestões?|dicas?|frases?)\b/,
+    // Números específicos com contexto claro - deve ser muito explícito
+    /\b(\d+)\s*(mensagens?|piadas?|historias?|histórias?|exemplos?|sugestões?|dicas?|frases?|respostas?)\b/,
     /envie?\s*(\d+)\s*(mensagens?|piadas?|historias?|histórias?|exemplos?|sugestões?|dicas?)/,
     /mande?\s*(\d+)\s*(mensagens?|piadas?|historias?|histórias?|exemplos?|sugestões?|dicas?)/,
     /faça?\s*(\d+)\s*(mensagens?|piadas?|historias?|histórias?|exemplos?|sugestões?|dicas?)/,
     /crie?\s*(\d+)\s*(mensagens?|piadas?|historias?|histórias?|exemplos?|sugestões?|dicas?)/,
+    /me\s*(conte|envie|mande|dê)\s*(\d+)\s*(piadas?|historias?|histórias?|exemplos?|sugestões?|dicas?)/,
     
-    // Palavras que indicam múltiplas - deve incluir o tipo de conteúdo
-    /\b(várias|varias|multiplas|múltiplas|algumas|muitas)\s*(mensagens?|piadas?|historias?|histórias?|exemplos?|sugestões?|dicas?)\b/,
+    // Palavras que indicam múltiplas - deve incluir o tipo de conteúdo ESPECÍFICO
+    /\b(várias|varias|multiplas|múltiplas|algumas|muitas)\s*(piadas?|historias?|histórias?|exemplos?|sugestões?|dicas?|respostas?)\b/,
     
-    // Padrões específicos comuns
-    /em\s*(\d+)\s*mensagens?\s*(separadas?|diferentes?)?/,
+    // Divisão explícita
+    /em\s*(\d+)\s*(mensagens?|partes?)\s*(separadas?|diferentes?)?/,
     /divida?\s*(em|por)\s*(\d+)\s*(mensagens?|partes?)/,
     /separe?\s*(em|por)\s*(\d+)\s*(mensagens?|partes?)/,
     /quebr[ae]\s*(em|por)\s*(\d+)\s*(mensagens?|partes?)/,
     
-    // Solicitações sequenciais explícitas mais específicas
-    /primeiro.*depois.*depois/,
-    /uma.*outra.*outra/,
-    /\buma\s*de\s*cada\s*vez\b/,
-    
-    // Comandos explícitos para múltiplas respostas
-    /me\s*(conte|envie|mande)\s*(\d+)/,
-    /quero\s*(\d+)/,
-    /preciso\s*de\s*(\d+)/,
+    // Comandos sequenciais muito específicos
+    /primeiro.*depois.*terceiro/,
+    /primeira.*segunda.*terceira/,
+    /\buma\s*piada.*outra\s*piada/,
+    /\buma\s*história.*outra\s*história/,
   ];
   
-  // Verificar se algum padrão foi encontrado
-  const hasExplicitRequest = explicitPatterns.some(pattern => pattern.test(content));
+  // VERIFICAÇÃO EXTRA: Verificar se há números E contexto específico
+  const hasNumberAndContext = explicitPatterns.some(pattern => pattern.test(content));
   
-  if (hasExplicitRequest) {
-    console.log(`[MultipleMessages] ✅ Detectada solicitação explícita de múltiplas mensagens em: "${userContent}"`);
+  if (hasNumberAndContext) {
+    console.log(`[MultipleMessages] ✅ Detectada solicitação MUITO EXPLÍCITA de múltiplas mensagens em: "${userContent}"`);
     return true;
   }
   
@@ -498,13 +554,24 @@ async function toolCall(messages, response, tools, from, id, userContent, recurs
   const totalToolCalls = response.message.tool_calls.length;
   
   // DETECÇÃO ESPECIAL: Se há múltiplas chamadas de send_message, verificar se é spam ou solicitação legítima
-  const sendMessageCalls = response.message.tool_calls.filter(tc => tc.function.name === 'send_message');
+  const sendMessageCalls = response.message.tool_calls.filter(tc => 
+    tc.function.name === 'send_message' || tc.function.name === 'ssend_message'
+  );
+  
   if (sendMessageCalls.length > 1) {
     // Analisar se o usuário solicitou explicitamente múltiplas mensagens
     const userRequestedMultipleMessages = isMultipleMessagesRequested(userContent);
     
     if (userRequestedMultipleMessages) {
       console.log(`[ToolCall] ✅ MÚLTIPLAS MENSAGENS LEGÍTIMAS: Usuário solicitou explicitamente ${sendMessageCalls.length} mensagens. Processando todas.`);
+      
+      // Corrigir nomes de função se necessário
+      sendMessageCalls.forEach(call => {
+        if (call.function.name === 'ssend_message') {
+          call.function.name = 'send_message';
+        }
+      });
+      
       toolCallsToProcess = sendMessageCalls; // Processar todas as send_message calls
     } else {
       // BLOQUEIO RIGOROSO: Para primeira resposta, se não há solicitação explícita, é SEMPRE spam
@@ -515,7 +582,14 @@ async function toolCall(messages, response, tools, from, id, userContent, recurs
       } else {
         console.log(`[ToolCall] 🚨 DETECTADAS ${sendMessageCalls.length} chamadas de send_message - isso é SPAM! Processando apenas a primeira.`);
       }
-      toolCallsToProcess = [sendMessageCalls[0]]; // Apenas a primeira send_message
+      
+      // Corrigir nome da função se necessário
+      const firstCall = sendMessageCalls[0];
+      if (firstCall.function.name === 'ssend_message') {
+        firstCall.function.name = 'send_message';
+      }
+      
+      toolCallsToProcess = [firstCall]; // Apenas a primeira send_message
     }
   }
   
@@ -685,10 +759,13 @@ async function toolCall(messages, response, tools, from, id, userContent, recurs
     console.log(`[ToolCall] 🔁 IA quer executar ${normalizedNewResponse.message.tool_calls.length} ferramenta(s) adicional(is)`);
     
     // VERIFICAÇÃO ANTI-SPAM: Se a IA quer fazer múltiplas send_message calls, isso é spam
-    const newSendMessageCalls = normalizedNewResponse.message.tool_calls.filter(tc => tc.function.name === 'send_message');
+    const newSendMessageCalls = normalizedNewResponse.message.tool_calls.filter(tc => 
+      tc.function.name === 'send_message' || tc.function.name === 'ssend_message'
+    );
+    
     if (newSendMessageCalls.length > 1) {
       console.log(`[ToolCall] 🚨 IA TENTANDO FAZER SPAM: ${newSendMessageCalls.length} send_message calls detectadas. PARANDO para evitar spam.`);
-      console.log(`[ToolCall] � Sistema bloqueou múltiplas mensagens sequenciais para manter conversa natural.`);
+      console.log(`[ToolCall] 🛡️ Sistema bloqueou múltiplas mensagens sequenciais para manter conversa natural.`);
       
       // Não continuar recursão para evitar spam
       console.log(`[ToolCall] ✅ Execução de ferramentas concluída. Tempo total: ${Date.now() - toolStartTime}ms`);
