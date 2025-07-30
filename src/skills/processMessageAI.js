@@ -317,6 +317,17 @@ export default async function processMessage(message) {
       console.log(`[ProcessMessage] 🛠️ Executando ferramentas... - ${new Date().toISOString()}`);
       messages = await toolCall(messages, response, tools, data.from, data.id, userContent);
       console.log(`[ProcessMessage] ✅ Ferramentas executadas (+${Date.now() - stepTime}ms)`);
+    } else if (response.message.tool_calls && response.message.tool_calls.length > 0) {
+      // Fallback: garantir que toda tool_call tenha uma mensagem tool, mesmo se não houver execução
+      for (const toolCall of response.message.tool_calls) {
+        const fallbackResponse = {
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: 'Erro: ferramenta não encontrada ou falhou ao executar.',
+        };
+        messages.push(fallbackResponse);
+        console.log(`[ProcessMessage] 🆘 Fallback: Adicionada resposta de erro para tool_call_id=${toolCall.id}`);
+      }
     }
     
     // --- Final Asynchronous Updates ---
