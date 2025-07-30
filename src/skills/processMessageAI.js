@@ -47,118 +47,55 @@ const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
 // Função para sanitizar mensagens antes de enviar para a IA
 function sanitizeMessagesForChat(messages) {
   const cleanMessages = [];
-  const skip = new Set(); // Índices de mensagens a pular
   
-  console.log(`[Sanitize] 🧹 Iniciando sanitização de ${messages.length} mensagens...`);
-  
-  // Primeiro passo: identificar todas as mensagens assistant órfãs e suas tool responses
   for (let i = 0; i < messages.length; i++) {
-    if (skip.has(i)) continue;
-    
     const message = messages[i];
     
     // Se for uma mensagem assistant com tool_calls, verificar se todas as tool responses estão presentes
     if (message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0) {
       const toolCallIds = message.tool_calls.map(tc => tc.id);
-      const foundToolCallIds = new Set();
-      const toolResponseIndices = [];
       
-      // Buscar por todas as tool responses correspondentes em TODA a conversa (não apenas consecutivas)
+      // Contar quantas tool responses seguem esta mensagem assistant CONSECUTIVAMENTE
+      let toolResponsesFound = 0;
+      const foundToolCallIds = new Set();
+      
       for (let j = i + 1; j < messages.length; j++) {
         const nextMsg = messages[j];
         if (nextMsg.role === 'tool' && toolCallIds.includes(nextMsg.tool_call_id)) {
+          toolResponsesFound++;
           foundToolCallIds.add(nextMsg.tool_call_id);
-          toolResponseIndices.push(j);
+        } else {
+          // Encontrou uma mensagem que não é tool ou não corresponde aos tool_calls
+          // Parar a busca aqui
+          break;
         }
       }
       
-      // Se não encontrou todas as tool responses, marcar para remoção
-      if (foundToolCallIds.size !== toolCallIds.length) {
-        const missingIds = toolCallIds.filter(id => !foundToolCallIds.has(id));
-        console.log(`[Sanitize] ⚠️ Removendo mensagem assistant órfã (índice ${i}) com tool_calls incompletas:`);
-        console.log(`[Sanitize]    - Tool calls esperados: [${toolCallIds.join(', ')}]`);
-        console.log(`[Sanitize]    - Tool calls encontrados: [${Array.from(foundToolCallIds).join(', ')}]`);
-        console.log(`[Sanitize]    - Tool calls órfãos: [${missingIds.join(', ')}]`);
+      // Se não encontrou todas as tool responses consecutivamente, remover a mensagem assistant e suas tool responses incompletas
+      if (toolResponsesFound !== toolCallIds.length) {
+        console.log(`[Sanitize] ⚠️ Removendo mensagem assistant órfã com tool_calls incompletas: esperado ${toolCallIds.length}, encontrado ${toolResponsesFound}`);
         
-        // Marcar a mensagem assistant para remoção
-        skip.add(i);
-        
-        // Marcar as tool responses encontradas para remoção também (para manter consistência)
-        toolResponseIndices.forEach(idx => skip.add(idx));
+        // Pular esta mensagem assistant e suas tool responses que foram encontradas
+        i += toolResponsesFound; // Pular as tool responses que foram encontradas
+        continue;
       }
     }
     
-    // Remover mensagens assistant vazias (sem content e sem tool_calls)
-    if (message.role === 'assistant' && !message.content && (!message.tool_calls || message.tool_calls.length === 0)) {
-      console.log(`[Sanitize] 🗑️ Removendo mensagem assistant vazia (índice ${i})`);
-      skip.add(i);
-    }
-    
-    // Remover mensagens tool órfãs (tool responses sem assistant correspondente)
-    if (message.role === 'tool' && message.tool_call_id) {
-      let foundCorrespondingAssistant = false;
-      for (let k = 0; k < i; k++) {
-        const prevMsg = messages[k];
-        if (prevMsg.role === 'assistant' && prevMsg.tool_calls) {
-          const toolCallIds = prevMsg.tool_calls.map(tc => tc.id);
-          if (toolCallIds.includes(message.tool_call_id)) {
-            foundCorrespondingAssistant = true;
-            break;
-          }
-        }
-      }
-      
-      if (!foundCorrespondingAssistant) {
-        console.log(`[Sanitize] 🗑️ Removendo mensagem tool órfã (índice ${i}) com tool_call_id: ${message.tool_call_id}`);
-        skip.add(i);
-      }
-    }
-  }
-  
-  // Segundo passo: construir array limpo pulando as mensagens marcadas
-  for (let i = 0; i < messages.length; i++) {
-    if (!skip.has(i)) {
-      cleanMessages.push(messages[i]);
-    }
+    cleanMessages.push(message);
   }
   
   console.log(`[Sanitize] 🧹 Mensagens sanitizadas: ${messages.length} -> ${cleanMessages.length}`);
-  if (skip.size > 0) {
-    console.log(`[Sanitize] 🗑️ Índices removidos: [${Array.from(skip).sort((a, b) => a - b).join(', ')}]`);
-  }
-  
   return cleanMessages;
 }
 
 const SYSTEM_PROMPT = {
   role: 'system',
-  content: `Você é um assistente de IA amigável e conciso. Sua principal forma de comunicação com o usuário é através da função 'send_message'.
+  content: `Você é um assistente de IA. Sua principal forma de comunicação com o usuário é através da função 'send_message'.
 
-**REGRAS CRÍTICAS ANTI-SPAM:**
+**REGRAS CRÍTICAS PARA COMUNICAÇÃO:**
 1. **SEMPRE USE 'send_message':** Para qualquer texto que você queira enviar ao usuário, você DEVE OBRIGATORIAMENTE usar a função 'send_message'. NUNCA responda diretamente com texto no campo 'content' da sua resposta principal.
-
-2. **REGRA OURO - UMA MENSAGEM POR RESPOSTA:** Para conversas NORMAIS (saudações, perguntas simples, conversas casuais), use APENAS UMA função 'send_message' por resposta. Seja conciso e direto.
-
-3. **BLOQUEIO RIGOROSO DE SPAM:**
-   - Para saudações como "Oi", "Olá", "Como está?" → SEMPRE responda com UMA ÚNICA mensagem completa
-   - NUNCA faça múltiplas chamadas de send_message para o mesmo conceito
-   - NUNCA repita a mesma informação em mensagens diferentes
-   - MÚLTIPLAS MENSAGENS SÓ são permitidas quando o usuário EXPLICITAMENTE solicitar números específicos (ex: "envie 3 piadas", "faça 5 sugestões")
-
-4. **DETECÇÃO DE SOLICITAÇÃO MÚLTIPLA:**
-   - Solicitação válida: "Me conte 3 piadas", "Envie 5 dicas", "Faça 2 sugestões"
-   - NÃO é solicitação múltipla: "Oi", "Como está?", "Explique algo", "Me ajude"
-
-5. **NÃO RESPONDA DIRETAMENTE:** Se você tiver uma resposta para o usuário, mas não usar 'send_message', sua resposta NÃO SERÁ ENTREGUE.
-
-**EXEMPLOS CORRETOS:**
-- Usuário: "Oi" → UMA mensagem: "Oi! Tudo bem? Como posso ajudar você hoje? 😊"
-- Usuário: "Como está?" → UMA mensagem: "Estou bem, obrigado! Pronto para ajudar. O que você precisa?"
-- Usuário: "Me conte 3 piadas" → TRÊS mensagens separadas com piadas
-- Usuário: "Explique fotossíntese" → UMA mensagem explicativa completa
-
-**EXEMPLOS INCORRETOS (SPAM):**
-- Usuário: "Oi" → ❌ Múltiplas mensagens: "Oi!" + "Como está?" + "Posso ajudar?"
+2. **Múltiplas Mensagens:** Você pode chamar a função 'send_message' várias vezes em sequência para quebrar suas respostas em mensagens menores e mais dinâmicas, se apropriado.
+3. **NÃO RESPONDA DIRETAMENTE:** Se você tiver uma resposta para o usuário, mas não usar 'send_message', sua resposta NÃO SERÁ ENTREGUE. Isso é um erro crítico.
 
 Para buscar informações na web, siga este processo em duas etapas:
 1. **Descubra:** Use a função 'web_search' com uma query de busca (ex: "melhores restaurantes em São Paulo") para encontrar URLs relevantes.
@@ -309,32 +246,7 @@ export default async function processMessage(message) {
     console.log(`[ProcessMessage] 🎨 Inferindo estilo de interação... - ${new Date().toISOString()}`);
     const inferredStyle = await inferInteractionStyle(userContent);
 
-    const chatMessages = [SYSTEM_PROMPT, dynamicPrompt, ...messages, { role: 'user', content: userContent }];
-    
-    // ANTI-SPAM: Adicionar prompt específico para prevenir múltiplas mensagens desnecessárias
-    const antiSpamPrompt = {
-      role: 'system',
-      content: `CRÍTICO ANTI-SPAM: Esta é sua PRIMEIRA resposta para "${userContent}". 
-
-ANÁLISE DA MENSAGEM: ${userContent.toLowerCase().trim().length <= 10 ? 'SAUDAÇÃO SIMPLES DETECTADA' : 'MENSAGEM NORMAL'}
-
-REGRA ABSOLUTA ANTI-SPAM:
-- Para saudações simples como "Oi", "Olá", "Como está?" → Responda com APENAS UMA função 'send_message' contendo uma resposta amigável e completa
-- Para qualquer pergunta ou conversação normal → UMA mensagem é suficiente
-- NUNCA faça múltiplas chamadas de send_message a menos que seja EXPLICITAMENTE solicitado com números (ex: "envie 3 piadas")
-
-EXEMPLO CORRETO para "Oi":
-- ✅ UMA chamada: send_message("Oi! Tudo bem? Como posso ajudar você hoje? 😊")
-
-EXEMPLOS INCORRETOS (SPAM BLOQUEADO):
-- ❌ send_message("Oi!") + send_message("Como está?") + send_message("Posso ajudar?")
-- ❌ send_message("Oi! Tudo bem?") + send_message("Como posso ajudar?")
-- ❌ send_message("Olá!") + send_message("Em que posso ajudar?")
-
-REGRA: UMA mensagem completa e amigável é SEMPRE melhor que múltiplas mensagens fragmentadas.`
-    };
-    
-    chatMessages.push(antiSpamPrompt);
+    const chatMessages = [dynamicPrompt, ...messages, { role: 'user', content: userContent }];
     
     // CRÍTICO: Sanitizar mensagens antes de enviar para evitar tool_calls órfãs
     const sanitizedChatMessages = sanitizeMessagesForChat(chatMessages);
@@ -343,56 +255,6 @@ REGRA: UMA mensagem completa e amigável é SEMPRE melhor que múltiplas mensage
     let response = await chatAi(sanitizedChatMessages);
 
     console.log(`[ProcessMessage] ✅ Análises de IA concluídas (+${Date.now() - stepTime}ms)`);
-
-    // --- Process AI Response ---
-    stepTime = Date.now();
-    console.log(`[ProcessMessage] � Normalizando resposta da IA... - ${new Date().toISOString()}`);
-    response = normalizeAiResponse(response);
-    
-    // VERIFICAÇÃO CRÍTICA ANTI-SPAM: Bloquear múltiplas send_message na primeira resposta
-    if (response.message.tool_calls && response.message.tool_calls.length > 0) {
-      // Normalizar nomes de funções e contar send_message calls (incluindo variações com erro de digitação)
-      const sendMessageCalls = response.message.tool_calls.filter(tc => 
-        tc.function.name === 'send_message' || tc.function.name === 'ssend_message'
-      );
-      
-      if (sendMessageCalls.length > 1) {
-        const userRequestedMultiple = isMultipleMessagesRequested(userContent);
-        
-        if (!userRequestedMultiple) {
-          console.log(`[ProcessMessage] 🚨 BLOQUEANDO SPAM NA PRIMEIRA RESPOSTA: ${sendMessageCalls.length} send_message calls para "${userContent}"`);
-          console.log(`[ProcessMessage] 🛡️ Mantendo apenas a primeira mensagem para evitar spam.`);
-          
-          // Manter apenas a primeira send_message call (corrigindo nome se necessário)
-          const firstSendMessage = sendMessageCalls[0];
-          if (firstSendMessage.function.name === 'ssend_message') {
-            firstSendMessage.function.name = 'send_message';
-          }
-          
-          const keptToolCalls = [firstSendMessage];
-          const otherToolCalls = response.message.tool_calls.filter(tc => 
-            tc.function.name !== 'send_message' && tc.function.name !== 'ssend_message'
-          );
-          
-          response.message.tool_calls = [...keptToolCalls, ...otherToolCalls];
-        } else {
-          console.log(`[ProcessMessage] ✅ Múltiplas mensagens autorizadas pelo usuário: "${userContent}"`);
-          
-          // Corrigir nomes de função mesmo quando autorizado
-          sendMessageCalls.forEach(call => {
-            if (call.function.name === 'ssend_message') {
-              call.function.name = 'send_message';
-            }
-          });
-        }
-      } else if (sendMessageCalls.length === 1 && sendMessageCalls[0].function.name === 'ssend_message') {
-        // Corrigir nome da função mesmo para chamada única
-        sendMessageCalls[0].function.name = 'send_message';
-        console.log(`[ProcessMessage] 🔧 Corrigido nome da função de 'ssend_message' para 'send_message'`);
-      }
-    }
-    
-    console.log(`[ProcessMessage] ✅ Resposta normalizada e verificada (+${Date.now() - stepTime}ms)`);
 
     // Update user profile with the latest sentiment and style (quick, synchronous update)
     stepTime = Date.now();
@@ -404,6 +266,12 @@ REGRA: UMA mensagem completa e amigável é SEMPRE melhor que múltiplas mensage
     };
     await updateUserProfile(userId, updatedProfile);
     console.log(`[ProcessMessage] ✅ Perfil (sentimento/estilo) atualizado (+${Date.now() - stepTime}ms)`);
+
+    // --- Process AI Response ---
+    stepTime = Date.now();
+    console.log(`[ProcessMessage] 🔧 Normalizando resposta da IA... - ${new Date().toISOString()}`);
+    response = normalizeAiResponse(response);
+    console.log(`[ProcessMessage] ✅ Resposta normalizada (+${Date.now() - stepTime}ms)`);
 
     messages.push({ role: 'user', content: userContent });
     messages.push(response.message);
@@ -433,97 +301,8 @@ REGRA: UMA mensagem completa e amigável é SEMPRE melhor que múltiplas mensage
   }
 }
 
-// Função para detectar se o usuário solicitou explicitamente múltiplas mensagens
-function isMultipleMessagesRequested(userContent) {
-  const content = userContent.toLowerCase().trim();
-  
-  // BLOQUEIO RIGOROSO: Saudações e perguntas simples NUNCA devem ser consideradas solicitações múltiplas
-  const simpleGreetings = [
-    // Saudações básicas
-    /^(oi|olá|ola|hello|hi|hey|bom dia|boa tarde|boa noite|e aí|eai|iae)\.?!?$/,
-    
-    // Perguntas sobre estado
-    /^(como (você )?está\??)\.?!?$/,
-    /^(tudo (bem|bom)\??)\.?!?$/,
-    /^(beleza\??)\.?!?$/,
-    /^(como vai\??)\.?!?$/,
-    /^(td bem\??)\.?!?$/,
-    
-    // Cumprimentos expandidos
-    /^(oi,?\s*(tudo bem|como está|beleza)\??)\.?!?$/,
-    /^(olá,?\s*(tudo bem|como está|beleza)\??)\.?!?$/,
-    
-    // Variações comuns
-    /^(oie?|oiii+|oiee+)\.?!?$/,
-    /^(hii+|hello+)\.?!?$/,
-    
-    // Combinações simples
-    /^(oi|olá)\s*(aí|pessoal|galera)\.?!?$/,
-  ];
-  
-  // BLOQUEIO EXTRA: Frases introdutórias comuns que são simplesmente conversacionais
-  const conversationalPhrases = [
-    /^(me ajuda|ajuda aí|preciso de ajuda|pode me ajudar)\.?!?$/,
-    /^(o que você pode fazer|o que sabe fazer)\.?!?$/,
-    /^(como funciona|como usar|como posso usar)\.?!?$/,
-    /^(quem é você|quem você é|o que é você)\.?!?$/,
-  ];
-  
-  // Se for uma saudação simples ou frase conversacional, NUNCA permitir múltiplas mensagens
-  if (simpleGreetings.some(pattern => pattern.test(content)) || 
-      conversationalPhrases.some(pattern => pattern.test(content))) {
-    console.log(`[MultipleMessages] 🚫 SAUDAÇÃO/FRASE SIMPLES DETECTADA: "${userContent}" - BLOQUEANDO múltiplas mensagens`);
-    return false;
-  }
-  
-  // PADRÕES SUPER ESPECÍFICOS: Só permitir múltiplas mensagens para solicitações MUITO explícitas
-  const explicitPatterns = [
-    // Números específicos com contexto claro - deve ser muito explícito
-    /\b(\d+)\s*(mensagens?|piadas?|historias?|histórias?|exemplos?|sugestões?|dicas?|frases?|respostas?)\b/,
-    /envie?\s*(\d+)\s*(mensagens?|piadas?|historias?|histórias?|exemplos?|sugestões?|dicas?)/,
-    /mande?\s*(\d+)\s*(mensagens?|piadas?|historias?|histórias?|exemplos?|sugestões?|dicas?)/,
-    /faça?\s*(\d+)\s*(mensagens?|piadas?|historias?|histórias?|exemplos?|sugestões?|dicas?)/,
-    /crie?\s*(\d+)\s*(mensagens?|piadas?|historias?|histórias?|exemplos?|sugestões?|dicas?)/,
-    /me\s*(conte|envie|mande|dê)\s*(\d+)\s*(piadas?|historias?|histórias?|exemplos?|sugestões?|dicas?)/,
-    
-    // Palavras que indicam múltiplas - deve incluir o tipo de conteúdo ESPECÍFICO
-    /\b(várias|varias|multiplas|múltiplas|algumas|muitas)\s*(piadas?|historias?|histórias?|exemplos?|sugestões?|dicas?|respostas?)\b/,
-    
-    // Divisão explícita
-    /em\s*(\d+)\s*(mensagens?|partes?)\s*(separadas?|diferentes?)?/,
-    /divida?\s*(em|por)\s*(\d+)\s*(mensagens?|partes?)/,
-    /separe?\s*(em|por)\s*(\d+)\s*(mensagens?|partes?)/,
-    /quebr[ae]\s*(em|por)\s*(\d+)\s*(mensagens?|partes?)/,
-    
-    // Comandos sequenciais muito específicos
-    /primeiro.*depois.*terceiro/,
-    /primeira.*segunda.*terceira/,
-    /\buma\s*piada.*outra\s*piada/,
-    /\buma\s*história.*outra\s*história/,
-  ];
-  
-  // VERIFICAÇÃO EXTRA: Verificar se há números E contexto específico
-  const hasNumberAndContext = explicitPatterns.some(pattern => pattern.test(content));
-  
-  if (hasNumberAndContext) {
-    console.log(`[MultipleMessages] ✅ Detectada solicitação MUITO EXPLÍCITA de múltiplas mensagens em: "${userContent}"`);
-    return true;
-  }
-  
-  console.log(`[MultipleMessages] ❌ Não detectada solicitação explícita de múltiplas mensagens em: "${userContent}"`);
-  return false;
-}
-
-async function toolCall(messages, response, tools, from, id, userContent, recursiveState = null) {
-  // Se não há estado recursivo, criar um novo
-  if (!recursiveState) {
-    recursiveState = {
-      startTime: Date.now(),
-      depth: 0
-    };
-  }
-  
-  const toolStartTime = recursiveState.startTime;
+async function toolCall(messages, response, tools, from, id, userContent) {
+  const toolStartTime = Date.now();
   console.log(`[ToolCall] 🔧 Iniciando execução de ferramentas...`);
   let newMessages = [...messages];
 
@@ -546,62 +325,12 @@ async function toolCall(messages, response, tools, from, id, userContent, recurs
     return messages;
   }
 
-  console.log(`[ToolCall] 📋 Executando ${response.message.tool_calls.length} ferramenta(s). Processando UMA por vez para manter sequência natural...`);
-
-  // ESTRATÉGIA: Processar apenas a PRIMEIRA tool_call para manter o fluxo conversacional natural
-  // Se há múltiplas tool_calls, processa só a primeira e deixa a IA decidir o próximo passo
-  let toolCallsToProcess = response.message.tool_calls.slice(0, 1); // Apenas a primeira
-  const totalToolCalls = response.message.tool_calls.length;
-  
-  // DETECÇÃO ESPECIAL: Se há múltiplas chamadas de send_message, verificar se é spam ou solicitação legítima
-  const sendMessageCalls = response.message.tool_calls.filter(tc => 
-    tc.function.name === 'send_message' || tc.function.name === 'ssend_message'
-  );
-  
-  if (sendMessageCalls.length > 1) {
-    // Analisar se o usuário solicitou explicitamente múltiplas mensagens
-    const userRequestedMultipleMessages = isMultipleMessagesRequested(userContent);
-    
-    if (userRequestedMultipleMessages) {
-      console.log(`[ToolCall] ✅ MÚLTIPLAS MENSAGENS LEGÍTIMAS: Usuário solicitou explicitamente ${sendMessageCalls.length} mensagens. Processando todas.`);
-      
-      // Corrigir nomes de função se necessário
-      sendMessageCalls.forEach(call => {
-        if (call.function.name === 'ssend_message') {
-          call.function.name = 'send_message';
-        }
-      });
-      
-      toolCallsToProcess = sendMessageCalls; // Processar todas as send_message calls
-    } else {
-      // BLOQUEIO RIGOROSO: Para primeira resposta, se não há solicitação explícita, é SEMPRE spam
-      const isFirstResponse = recursiveState.depth === 0;
-      if (isFirstResponse) {
-        console.log(`[ToolCall] 🚨 PRIMEIRA RESPOSTA COM SPAM DETECTADO: ${sendMessageCalls.length} send_message calls para "${userContent}" - isso é SPAM! Processando apenas a primeira.`);
-        console.log(`[ToolCall] 🛡️ Sistema anti-spam bloqueou múltiplas mensagens não solicitadas na primeira resposta.`);
-      } else {
-        console.log(`[ToolCall] 🚨 DETECTADAS ${sendMessageCalls.length} chamadas de send_message - isso é SPAM! Processando apenas a primeira.`);
-      }
-      
-      // Corrigir nome da função se necessário
-      const firstCall = sendMessageCalls[0];
-      if (firstCall.function.name === 'ssend_message') {
-        firstCall.function.name = 'send_message';
-      }
-      
-      toolCallsToProcess = [firstCall]; // Apenas a primeira send_message
-    }
-  }
-  
-  if (totalToolCalls > 1) {
-    console.log(`[ToolCall] ⚠️ DETECTADAS ${totalToolCalls} tool_calls. Processando apenas a primeira para manter fluxo sequencial.`);
-    console.log(`[ToolCall] 💡 A IA poderá continuar com as demais tool_calls na próxima resposta.`);
-  }
+  console.log(`[ToolCall] 📋 Executando ${response.message.tool_calls.length} ferramenta(s) sequencialmente...`);
 
   // Coletar todas as respostas das ferramentas primeiro
   const toolResponses = [];
   
-  for (const toolCall of toolCallsToProcess) {
+  for (const toolCall of response.message.tool_calls) {
     const toolName = toolCall.function.name;
     let toolResultContent = '';
     let actualToolName = toolName;
@@ -690,28 +419,28 @@ async function toolCall(messages, response, tools, from, id, userContent, recurs
   // Adicionar todas as respostas das ferramentas ao array de mensagens
   newMessages.push(...toolResponses);
 
-  // IMPORTANTE: Modificar a mensagem assistant original para conter apenas a tool_call processada
-  // Isso evita problemas de tool_calls órfãs para as tool_calls que não foram processadas ainda
-  const modifiedAssistantMessage = {
-    ...response.message,
-    tool_calls: toolCallsToProcess // Apenas as tool_calls que foram realmente processadas
-  };
-  
-  // Substituir a mensagem assistant original pela versão modificada
-  newMessages[newMessages.length - toolResponses.length - 1] = modifiedAssistantMessage;
-
   // Validação final para debug
-  const originalToolCallIds = response.message.tool_calls.map(tc => tc.id);
-  const processedToolCallIds = toolCallsToProcess.map(tc => tc.id);
+  const toolCallIds = response.message.tool_calls.map(tc => tc.id);
   const toolResponseIds = toolResponses.map(tr => tr.tool_call_id);
   
-  console.log(`[ToolCall] 📊 Debug - Tool call IDs originais: ${originalToolCallIds.join(', ')}`);
-  console.log(`[ToolCall] 📊 Debug - Tool call IDs processados: ${processedToolCallIds.join(', ')}`);
+  console.log(`[ToolCall] 📊 Debug - Tool call IDs esperados: ${toolCallIds.join(', ')}`);
   console.log(`[ToolCall] 📊 Debug - Tool response IDs encontrados: ${toolResponseIds.join(', ')}`);
   
-  if (totalToolCalls > 1) {
-    const remainingToolCallIds = response.message.tool_calls.slice(1).map(tc => tc.id);
-    console.log(`[ToolCall] 📊 Debug - Tool call IDs restantes (para próxima iteração): ${remainingToolCallIds.join(', ')}`);
+  const missingResponses = toolCallIds.filter(id => !toolResponseIds.includes(id));
+  if (missingResponses.length > 0) {
+    console.error(`[ToolCall] ⚠️ ERRO CRÍTICO: Tool calls sem resposta detectadas: ${missingResponses.join(', ')}`);
+    // Isso não deveria acontecer mais, mas vamos adicionar como fallback
+    for (const missingId of missingResponses) {
+      const fallbackResponse = {
+        role: 'tool',
+        tool_call_id: missingId,
+        name: 'unknown',
+        content: 'Erro: ferramenta não encontrada ou falhou ao executar.',
+      };
+      toolResponses.push(fallbackResponse);
+      newMessages.push(fallbackResponse);
+      console.log(`[ToolCall] 🆘 Fallback: Adicionada resposta de erro para ${missingId}`);
+    }
   }
 
   console.log(`[ToolCall] 🔄 Enviando todos os resultados das ferramentas para a IA...`);
@@ -740,50 +469,15 @@ async function toolCall(messages, response, tools, from, id, userContent, recurs
   const sanitizedToolMessages = sanitizeMessagesForChat(newMessages);
   console.log(`[ToolCall] 🧹 Mensagens sanitizadas para tool call: ${newMessages.length} -> ${sanitizedToolMessages.length}`);
   
-  // ORIENTAÇÃO ANTI-SPAM: Adicionar um prompt específico para orientar a IA sobre não fazer spam
-  if (recursiveState.depth > 0) {
-    const antiSpamPrompt = {
-      role: 'system',
-      content: `IMPORTANTE: Você acabou de executar uma ferramenta. Se você quiser se comunicar com o usuário agora, use APENAS UMA chamada de 'send_message'. NÃO faça múltiplas chamadas de send_message de uma só vez - isso é considerado spam. Seja conciso e natural em suas respostas.`
-    };
-    sanitizedToolMessages.splice(-2, 0, antiSpamPrompt); // Inserir antes da última mensagem assistant
-  }
-  
-  // ESTRATÉGIA MELHORADA: Permitir que a IA continue processando tool_calls, mas UMA por vez
-  // Isso permite fluxos como: imagem -> mensagem -> imagem -> mensagem
+  // Modificar o toolsParam para undefined para permitir resposta livre (sem tool_choice="required")
   const newResponse = await chatAi(sanitizedToolMessages, undefined);
   const normalizedNewResponse = normalizeAiResponse(newResponse);
   newMessages.push(normalizedNewResponse.message);
 
   if (normalizedNewResponse.message.tool_calls && normalizedNewResponse.message.tool_calls.length > 0) {
-    console.log(`[ToolCall] 🔁 IA quer executar ${normalizedNewResponse.message.tool_calls.length} ferramenta(s) adicional(is)`);
-    
-    // VERIFICAÇÃO ANTI-SPAM: Se a IA quer fazer múltiplas send_message calls, isso é spam
-    const newSendMessageCalls = normalizedNewResponse.message.tool_calls.filter(tc => 
-      tc.function.name === 'send_message' || tc.function.name === 'ssend_message'
-    );
-    
-    if (newSendMessageCalls.length > 1) {
-      console.log(`[ToolCall] 🚨 IA TENTANDO FAZER SPAM: ${newSendMessageCalls.length} send_message calls detectadas. PARANDO para evitar spam.`);
-      console.log(`[ToolCall] 🛡️ Sistema bloqueou múltiplas mensagens sequenciais para manter conversa natural.`);
-      
-      // Não continuar recursão para evitar spam
-      console.log(`[ToolCall] ✅ Execução de ferramentas concluída. Tempo total: ${Date.now() - toolStartTime}ms`);
-      return newMessages;
-    }
-    
-    // IMPORTANTE: Limitar a profundidade para evitar loops infinitos
-    const MAX_RECURSIVE_CALLS = 5; // Máximo de 5 iterações
-    
-    recursiveState.depth++;
-    
-    if (recursiveState.depth <= MAX_RECURSIVE_CALLS) {
-      console.log(`[ToolCall] 🔄 Continuando execução recursiva (profundidade ${recursiveState.depth}/${MAX_RECURSIVE_CALLS})`);
-      // Recursivamente processar mais tool_calls, mas uma por vez
-      return await toolCall(newMessages, normalizedNewResponse, tools, from, id, userContent, recursiveState);
-    } else {
-      console.log(`[ToolCall] ⚠️ Limite de recursão atingido (${MAX_RECURSIVE_CALLS}). Parando para evitar loop infinito.`);
-    }
+    console.log(`[ToolCall] 🔁 Ferramentas adicionais detectadas, mas ignorando para evitar loop infinito`);
+    console.log(`[ToolCall] ⚠️ A IA quer executar mais ferramentas, mas vamos parar aqui para evitar recursão infinita`);
+    // Não executar recursivamente - apenas retornar as mensagens atuais
   }
 
   console.log(`[ToolCall] ✅ Execução de ferramentas e ciclo de IA concluídos. Tempo total: ${Date.now() - toolStartTime}ms`);
