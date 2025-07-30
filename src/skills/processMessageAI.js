@@ -47,41 +47,71 @@ const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
 // Função para sanitizar mensagens antes de enviar para a IA
 function sanitizeMessagesForChat(messages) {
   const cleanMessages = [];
+  const validToolCallIds = new Set();
   
+  // Primeira passada: coletar todos os tool_call_ids válidos
   for (let i = 0; i < messages.length; i++) {
     const message = messages[i];
-    
-    // Se for uma mensagem assistant com tool_calls, verificar se todas as tool responses estão presentes
     if (message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0) {
       const toolCallIds = message.tool_calls.map(tc => tc.id);
       
-      // Contar quantas tool responses seguem esta mensagem assistant CONSECUTIVAMENTE
-      let toolResponsesFound = 0;
-      const foundToolCallIds = new Set();
+      // Verificar se todas as tool responses existem para esta mensagem assistant
+      let allToolResponsesFound = true;
+      const toolResponsesMap = new Map();
       
+      // Procurar por todas as tool responses correspondentes
       for (let j = i + 1; j < messages.length; j++) {
         const nextMsg = messages[j];
         if (nextMsg.role === 'tool' && toolCallIds.includes(nextMsg.tool_call_id)) {
-          toolResponsesFound++;
-          foundToolCallIds.add(nextMsg.tool_call_id);
-        } else {
-          // Encontrou uma mensagem que não é tool ou não corresponde aos tool_calls
-          // Parar a busca aqui
-          break;
+          toolResponsesMap.set(nextMsg.tool_call_id, nextMsg);
         }
       }
       
-      // Se não encontrou todas as tool responses consecutivamente, remover a mensagem assistant e suas tool responses incompletas
-      if (toolResponsesFound !== toolCallIds.length) {
-        console.log(`[Sanitize] ⚠️ Removendo mensagem assistant órfã com tool_calls incompletas: esperado ${toolCallIds.length}, encontrado ${toolResponsesFound}`);
-        
-        // Pular esta mensagem assistant e suas tool responses que foram encontradas
-        i += toolResponsesFound; // Pular as tool responses que foram encontradas
-        continue;
+      // Verificar se encontrou resposta para todos os tool_calls
+      if (toolResponsesMap.size === toolCallIds.length) {
+        // Todas as tool responses existem, adicionar os IDs como válidos
+        toolCallIds.forEach(id => validToolCallIds.add(id));
+      } else {
+        console.log(`[Sanitize] ⚠️ Mensagem assistant com tool_calls incompletas será removida: esperado ${toolCallIds.length}, encontrado ${toolResponsesMap.size}`);
       }
     }
+  }
+  
+  // Segunda passada: construir mensagens limpas
+  for (let i = 0; i < messages.length; i++) {
+    const message = messages[i];
     
-    cleanMessages.push(message);
+    if (message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0) {
+      // Só incluir se todos os tool_calls desta mensagem são válidos
+      const toolCallIds = message.tool_calls.map(tc => tc.id);
+      const allToolCallsValid = toolCallIds.every(id => validToolCallIds.has(id));
+      
+      if (allToolCallsValid) {
+        cleanMessages.push(message);
+      } else {
+        console.log(`[Sanitize] 🗑️ Removendo mensagem assistant órfã com tool_calls: ${toolCallIds.join(', ')}`);
+        console.log(`[Sanitize] 🔍 Detalhes da mensagem assistant removida:`, JSON.stringify(message, null, 2));
+      }
+    } else if (message.role === 'assistant') {
+      // Para mensagens assistant sem tool_calls, verificar se têm conteúdo válido
+      if (message.content && message.content.trim().length > 0) {
+        cleanMessages.push(message);
+      } else {
+        console.log(`[Sanitize] 🗑️ Removendo mensagem assistant vazia ou sem conteúdo`);
+        console.log(`[Sanitize] 🔍 Detalhes da mensagem assistant vazia:`, JSON.stringify(message, null, 2));
+      }
+    } else if (message.role === 'tool') {
+      // Só incluir tool messages que correspondem a tool_calls válidos
+      if (message.tool_call_id && validToolCallIds.has(message.tool_call_id)) {
+        cleanMessages.push(message);
+      } else {
+        console.log(`[Sanitize] 🗑️ Removendo mensagem tool órfã: tool_call_id=${message.tool_call_id}`);
+        console.log(`[Sanitize] 🔍 Detalhes da mensagem tool removida:`, JSON.stringify(message, null, 2));
+      }
+    } else {
+      // Para outras mensagens (user, system, assistant sem tool_calls), sempre incluir
+      cleanMessages.push(message);
+    }
   }
   
   console.log(`[Sanitize] 🧹 Mensagens sanitizadas: ${messages.length} -> ${cleanMessages.length}`);
@@ -134,6 +164,12 @@ export default async function processMessage(message) {
     console.log(`[ProcessMessage] 📖 Carregando contexto do usuário... - ${new Date().toISOString()}`);
     let { messages } = await getUserContext(userId); // This 'messages' is our STM
     console.log(`[ProcessMessage] ✅ Contexto carregado (+${Date.now() - stepTime}ms)`);
+    
+    // CRÍTICO: Sanitizar contexto histórico para remover mensagens órfãs corrompidas
+    stepTime = Date.now();
+    console.log(`[ProcessMessage] 🧹 Sanitizando contexto histórico... - ${new Date().toISOString()}`);
+    messages = sanitizeMessagesForChat(messages);
+    console.log(`[ProcessMessage] ✅ Contexto histórico sanitizado (+${Date.now() - stepTime}ms)`);
     
     stepTime = Date.now();
     console.log(`[ProcessMessage] 👤 Carregando perfil do usuário... - ${new Date().toISOString()}`);
@@ -434,7 +470,6 @@ async function toolCall(messages, response, tools, from, id, userContent) {
       const fallbackResponse = {
         role: 'tool',
         tool_call_id: missingId,
-        name: 'unknown',
         content: 'Erro: ferramenta não encontrada ou falhou ao executar.',
       };
       toolResponses.push(fallbackResponse);
