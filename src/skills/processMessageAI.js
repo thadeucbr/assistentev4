@@ -282,11 +282,18 @@ async function toolCall(messages, response, tools, from, id, userContent) {
   for (const toolCall of response.message.tool_calls) {
     const toolName = toolCall.function.name;
     let toolResultContent = '';
+    let actualToolName = toolName;
 
     try {
       const args = JSON.parse(toolCall.function.arguments);
 
-      switch (toolName) {
+      // Normalizar nomes de ferramentas com erros de digitação
+      if (toolName === 'ssend_message') {
+        actualToolName = 'send_message';
+        console.log(`[ToolCall] ⚠️ Corrigindo nome da ferramenta de '${toolName}' para '${actualToolName}'`);
+      }
+
+      switch (actualToolName) {
         case 'image_generation_agent':
           const image = await generateImage({ ...args });
           toolResultContent = image.error ? `Erro ao gerar imagem: ${image.error}` : `Image generated and sent: "${args.prompt}"`;
@@ -296,6 +303,36 @@ async function toolCall(messages, response, tools, from, id, userContent) {
         case 'send_message':
           await sendMessage(from, args.content);
           toolResultContent = `Mensagem enviada ao usuário: "${args.content}"`;
+          break;
+
+        case 'image_analysis_agent':
+          const analysis = await analyzeImage({ ...args });
+          toolResultContent = analysis.error ? `Erro ao analisar imagem: ${analysis.error}` : `Imagem analisada com sucesso`;
+          break;
+
+        case 'reminder_agent':
+          // Aqui você precisará implementar a lógica para reminders
+          toolResultContent = `Funcionalidade de lembrete processada: ${args.query}`;
+          break;
+
+        case 'lottery_check_agent':
+          const lotteryResult = await lotteryCheck(args.query);
+          toolResultContent = `Resultado da loteria verificado: ${args.query}`;
+          break;
+
+        case 'audio_generation_agent':
+          const audio = await generateAudio(args.query);
+          if (audio && !audio.error) {
+            await sendPtt(from, audio);
+            toolResultContent = `Áudio gerado e enviado: "${args.query}"`;
+          } else {
+            toolResultContent = `Erro ao gerar áudio: ${audio?.error || 'Erro desconhecido'}`;
+          }
+          break;
+
+        case 'information_retrieval_agent':
+          const searchResult = await webSearch(args.query);
+          toolResultContent = `Busca realizada: ${args.query}`;
           break;
 
         default:
@@ -308,12 +345,33 @@ async function toolCall(messages, response, tools, from, id, userContent) {
       toolResultContent = `Erro interno ao processar a ferramenta ${toolName}.`;
     }
 
+    // Garantir que sempre seja adicionada uma resposta tool para cada tool_call
     newMessages.push({
       role: 'tool',
       tool_call_id: toolCall.id,
-      name: toolName,
+      name: actualToolName,
       content: toolResultContent,
     });
+  }
+
+  // Validar que todas as tool_calls foram respondidas
+  const toolCallIds = response.message.tool_calls.map(tc => tc.id);
+  const toolResponseIds = newMessages
+    .filter(msg => msg.role === 'tool')
+    .map(msg => msg.tool_call_id);
+  
+  const missingResponses = toolCallIds.filter(id => !toolResponseIds.includes(id));
+  if (missingResponses.length > 0) {
+    console.error(`[ToolCall] ⚠️ Tool calls sem resposta detectadas: ${missingResponses.join(', ')}`);
+    // Adicionar respostas de erro para tool_calls faltantes
+    for (const missingId of missingResponses) {
+      newMessages.push({
+        role: 'tool',
+        tool_call_id: missingId,
+        name: 'unknown',
+        content: 'Erro: ferramenta não encontrada ou falhou ao executar.',
+      });
+    }
   }
 
   console.log(`[ToolCall] 🔄 Enviando todos os resultados das ferramentas para a IA...`);
