@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "npx nodemon --watch index.js --watch src --ext js,json index.js --verbose",
+    "setup:browsers": "npx playwright install",
+    "setup:browsers:chromium": "npx playwright install chromium",
     "logs": "node src/utils/logViewer.js",
     "logs:tail": "node src/utils/logViewer.js --tail",
     "logs:list": "node src/utils/logViewer.js --list",
