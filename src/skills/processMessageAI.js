@@ -500,7 +500,7 @@ async function toolCall(messages, response, tools, from, id, userContent) {
 
         case 'information_retrieval_agent':
           const searchResult = await webSearch(args.query);
-          toolResultContent = `Busca realizada: ${args.query}`;
+          toolResultContent = `Busca realizada: ${searchResult}`;
           break;
 
         default:
