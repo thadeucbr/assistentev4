@@ -331,6 +331,7 @@ export default async function processMessage(message) {
         }
         // Se a última resposta assistant contém send_message, encerra ciclo
         if (lastResponse.tool_calls && lastResponse.tool_calls.some(tc => tc.function.name === 'send_message')) {
+          console.log(`[ProcessMessage] ✅ Send_message detectado na última resposta - encerrando ciclo de ferramentas`);
           break;
         }
       } else if (lastResponse.tool_calls && lastResponse.tool_calls.length > 0) {
@@ -582,6 +583,17 @@ async function toolCall(messages, response, tools, from, id, userContent) {
   // CRÍTICO: Sanitizar mensagens antes de enviar para evitar tool_calls órfãs
   const sanitizedToolMessages = sanitizeMessagesForChat(newMessages);
   console.log(`[ToolCall] 🧹 Mensagens sanitizadas para tool call: ${newMessages.length} -> ${sanitizedToolMessages.length}`);
+  
+  // Verificar se já executamos send_message - se sim, não chamar a IA novamente
+  const alreadyExecutedSendMessage = toolResponses.some(tr => 
+    tr.content && tr.content.includes('Mensagem enviada ao usuário:')
+  );
+  
+  if (alreadyExecutedSendMessage) {
+    console.log(`[ToolCall] ✅ Send_message já executado - parando aqui para evitar duplicatas`);
+    console.log(`[ToolCall] ✅ Execução de ferramentas concluída. Tempo total: ${Date.now() - toolStartTime}ms`);
+    return newMessages;
+  }
   
   // Modificar o toolsParam para undefined para permitir resposta livre (sem tool_choice="required")
   const newResponse = await chatAi(sanitizedToolMessages, undefined);
