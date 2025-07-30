@@ -505,16 +505,22 @@ async function toolCall(messages, response, tools, from, id, userContent) {
           const searchResult = await webSearch(args.query);
           if (searchResult.error) {
             toolResultContent = `Erro na busca web: ${searchResult.error}`;
-            if (searchResult.smartError && searchResult.fallbackError) {
-              toolResultContent += `\nDetalhes - Smart: ${searchResult.smartError}, Fallback: ${searchResult.fallbackError}`;
-            }
-            if (searchResult.partialResults && searchResult.partialResults.length > 0) {
-              toolResultContent += ` URLs parcialmente acessadas: ${searchResult.partialResults.join(', ')}`;
+            if (searchResult.hybridError && searchResult.fallbackError) {
+              toolResultContent += `\nDetalhes - Híbrida: ${searchResult.hybridError}, Fallback: ${searchResult.fallbackError}`;
             }
           } else if (searchResult.success) {
-            const methodInfo = searchResult.method === 'smart' ? '(Busca Inteligente)' : 
-                              searchResult.method === 'fallback' ? `(Busca Simplificada via ${searchResult.usedEngine})` :
-                              '(Último Recurso)';
+            const methodLabels = {
+              'simplified-playwright': '(Busca Avançada com Playwright)',
+              'fallback-direct': '(Busca Direta)',
+              'fallback-after-failure': '(Busca Robusta após falha)',
+              'last-resort-fallback': '(Último Recurso)',
+              'hybrid': '(Busca Híbrida)'
+            };
+            
+            const methodInfo = methodLabels[searchResult.method] || `(${searchResult.method})`;
+            if (searchResult.usedEngine) {
+              methodInfo = methodInfo.replace(')', ` via ${searchResult.usedEngine})`);
+            }
             
             toolResultContent = `Busca web concluída com sucesso para "${args.query}" ${methodInfo}.
 
@@ -526,7 +532,7 @@ ${searchResult.sources && searchResult.sources.length > 0 ?
   searchResult.sources.map((url, index) => `${index + 1}. ${url}`).join('\n') : 
   'Nenhuma fonte específica listada'}
 
-Esta informação foi obtida através de busca web automatizada${searchResult.method === 'smart' ? ' com análise inteligente de múltiplas fontes' : ''}.`;
+Esta informação foi obtida através de busca web automatizada${searchResult.method.includes('playwright') ? ' com navegação inteligente' : ''}.`;
           } else {
             toolResultContent = `Busca realizada para "${args.query}", mas formato de resposta inesperado: ${JSON.stringify(searchResult)}`;
           }

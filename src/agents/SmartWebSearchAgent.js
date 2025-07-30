@@ -178,6 +178,15 @@ class SmartWebSearchAgent {
   async initialize() {
     try {
       logger.debug('SmartWebSearchAgent', 'Inicializando navegador...');
+      
+      // Verificar se o Playwright está disponível
+      try {
+        await chromium.executablePath();
+      } catch (playwrightError) {
+        logger.error('SmartWebSearchAgent', 'Playwright não está configurado corretamente:', playwrightError.message);
+        return false;
+      }
+      
       this.browser = await chromium.launch({
         headless: true,
         args: [
@@ -460,6 +469,9 @@ Execute uma estratégia de busca completa para encontrar informações relevante
             break;
           }
 
+          // Adicionar mensagem do assistente primeiro
+          messages.push(response.message);
+
           // Processar tool calls
           for (const toolCall of response.message.tool_calls) {
             const { name, arguments: args } = toolCall.function;
@@ -526,11 +538,13 @@ Execute uma estratégia de busca completa para encontrar informações relevante
             });
           }
 
-          // Adicionar mensagem do assistente
-          messages.push(response.message);
-
         } catch (error) {
           logger.error('SmartWebSearchAgent', `Erro na iteração ${iterationCount}:`, error);
+          // Se falhou nas primeiras 3 iterações, encerrar mais cedo
+          if (iterationCount <= 3) {
+            logger.warn('SmartWebSearchAgent', 'Falhando cedo - provavelmente problema de configuração');
+            break;
+          }
           break;
         }
       }
