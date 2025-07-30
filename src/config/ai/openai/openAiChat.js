@@ -98,7 +98,7 @@ export default async function openAiChat(chatMessages, toolsParam) {
 
   if (toolsToUse) {
     body.tools = toolsToUse;
-    body.tool_choice = 'auto';
+    body.tool_choice = 'required'; // Force the model to use a tool
   }
 
   const response = await fetch(OPENAI_URL, {
