@@ -2,7 +2,6 @@
 import chatAi from '../config/ai/chat.ai.js';
 import { getUserProfile, updateUserProfile } from '../repository/userProfileRepository.js';
 import { retryAiJsonCall } from '../utils/aiResponseUtils.js';
-import logError from '../utils/logger.js';
 
 // Função para sanitizar mensagens antes de enviar para a IA (cópia da função do processMessageAI.js)
 function sanitizeMessagesForChat(messages) {
