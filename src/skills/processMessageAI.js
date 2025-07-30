@@ -589,9 +589,55 @@ async function toolCall(messages, response, tools, from, id, userContent) {
   newMessages.push(normalizedNewResponse.message);
 
   if (normalizedNewResponse.message.tool_calls && normalizedNewResponse.message.tool_calls.length > 0) {
-    console.log(`[ToolCall] 🔁 Ferramentas adicionais detectadas, mas ignorando para evitar loop infinito`);
-    console.log(`[ToolCall] ⚠️ A IA quer executar mais ferramentas, mas vamos parar aqui para evitar recursão infinita`);
-    // Não executar recursivamente - apenas retornar as mensagens atuais
+    // Verificar se contém send_message - se sim, executar; caso contrário, ignorar para evitar loop
+    const hasSendMessage = normalizedNewResponse.message.tool_calls.some(tc => tc.function.name === 'send_message');
+    if (hasSendMessage) {
+      console.log(`[ToolCall] � Executando send_message da resposta da IA...`);
+      // Executar apenas as ferramentas send_message
+      for (const toolCall of normalizedNewResponse.message.tool_calls) {
+        if (toolCall.function.name === 'send_message') {
+          try {
+            const args = JSON.parse(toolCall.function.arguments);
+            await sendMessage(from, args.content);
+            const toolResponse = {
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: `Mensagem enviada ao usuário: "${args.content}"`
+            };
+            newMessages.push(toolResponse);
+            console.log(`[ToolCall] ✅ Send_message executado: ${args.content}`);
+          } catch (error) {
+            console.error(`[ToolCall] Erro ao executar send_message:`, error);
+            const toolResponse = {
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: 'Erro ao enviar mensagem.'
+            };
+            newMessages.push(toolResponse);
+          }
+        } else {
+          // Para outras ferramentas, adicionar resposta de que foi ignorada
+          const toolResponse = {
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: 'Ferramenta ignorada para evitar loop infinito.'
+          };
+          newMessages.push(toolResponse);
+        }
+      }
+    } else {
+      console.log(`[ToolCall] �🔁 Ferramentas adicionais detectadas, mas ignorando para evitar loop infinito`);
+      console.log(`[ToolCall] ⚠️ A IA quer executar mais ferramentas, mas vamos parar aqui para evitar recursão infinita`);
+      // Adicionar respostas tool para evitar tool_calls órfãs
+      for (const toolCall of normalizedNewResponse.message.tool_calls) {
+        const toolResponse = {
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: 'Ferramenta ignorada para evitar loop infinito.'
+        };
+        newMessages.push(toolResponse);
+      }
+    }
   }
 
   console.log(`[ToolCall] ✅ Execução de ferramentas e ciclo de IA concluídos. Tempo total: ${Date.now() - toolStartTime}ms`);
