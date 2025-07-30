@@ -44,6 +44,49 @@ import generateAudio from './generateAudio.js';
 import sendPtt from '../whatsapp/sendPtt.js';
 const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
 
+// Função para sanitizar mensagens antes de enviar para a IA
+function sanitizeMessagesForChat(messages) {
+  const cleanMessages = [];
+  
+  for (let i = 0; i < messages.length; i++) {
+    const message = messages[i];
+    
+    // Se for uma mensagem assistant com tool_calls, verificar se todas as tool responses estão presentes
+    if (message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0) {
+      const toolCallIds = message.tool_calls.map(tc => tc.id);
+      
+      // Contar quantas tool responses seguem esta mensagem assistant
+      let toolResponsesFound = 0;
+      const foundToolCallIds = new Set();
+      
+      for (let j = i + 1; j < messages.length; j++) {
+        const nextMsg = messages[j];
+        if (nextMsg.role === 'tool' && toolCallIds.includes(nextMsg.tool_call_id)) {
+          toolResponsesFound++;
+          foundToolCallIds.add(nextMsg.tool_call_id);
+        } else if (nextMsg.role !== 'tool') {
+          // Parou de encontrar tool messages
+          break;
+        }
+      }
+      
+      // Se não encontrou todas as tool responses, remover a mensagem assistant e suas tool responses incompletas
+      if (toolResponsesFound !== toolCallIds.length) {
+        console.log(`[Sanitize] ⚠️ Removendo mensagem assistant órfã com tool_calls incompletas: esperado ${toolCallIds.length}, encontrado ${toolResponsesFound}`);
+        
+        // Pular esta mensagem assistant e suas tool responses incompletas
+        i += toolResponsesFound; // Pular as tool responses que foram encontradas
+        continue;
+      }
+    }
+    
+    cleanMessages.push(message);
+  }
+  
+  console.log(`[Sanitize] 🧹 Mensagens sanitizadas: ${messages.length} -> ${cleanMessages.length}`);
+  return cleanMessages;
+}
+
 const SYSTEM_PROMPT = {
   role: 'system',
   content: `Você é um assistente de IA. Sua principal forma de comunicação com o usuário é através da função 'send_message'.
@@ -203,8 +246,12 @@ export default async function processMessage(message) {
     const inferredStyle = await inferInteractionStyle(userContent);
 
     const chatMessages = [dynamicPrompt, ...messages, { role: 'user', content: userContent }];
+    
+    // CRÍTICO: Sanitizar mensagens antes de enviar para evitar tool_calls órfãs
+    const sanitizedChatMessages = sanitizeMessagesForChat(chatMessages);
+    
     console.log(`[ProcessMessage] 💬 Gerando resposta principal... - ${new Date().toISOString()}`);
-    let response = await chatAi(chatMessages);
+    let response = await chatAi(sanitizedChatMessages);
 
     console.log(`[ProcessMessage] ✅ Análises de IA concluídas (+${Date.now() - stepTime}ms)`);
 
