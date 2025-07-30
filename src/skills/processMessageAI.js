@@ -108,7 +108,7 @@ const SYSTEM_PROMPT = {
 
 **REGRAS CRÍTICAS PARA COMUNICAÇÃO:**
 1. **SEMPRE USE 'send_message':** Para qualquer texto que você queira enviar ao usuário, você DEVE OBRIGATORIAMENTE usar a função 'send_message'. NUNCA responda diretamente com texto no campo 'content' da sua resposta principal.
-2. **Múltiplas Mensagens:** Você pode chamar a função 'send_message' várias vezes em sequência para quebrar suas respostas em mensagens menores e mais dinâmicas, se apropriado.
+2. **UMA MENSAGEM POR VEZ:** Execute APENAS UMA função 'send_message' por resposta. Se você quiser enviar múltiplas mensagens, envie uma mensagem primeiro, aguarde a confirmação, e então o sistema permitirá que você envie a próxima. Isso evita spam e cria uma conversa mais natural.
 3. **NÃO RESPONDA DIRETAMENTE:** Se você tiver uma resposta para o usuário, mas não usar 'send_message', sua resposta NÃO SERÁ ENTREGUE. Isso é um erro crítico.
 4. **EXECUÇÃO SEQUENCIAL:** Quando o usuário pedir múltiplas ações (ex: "gere uma imagem, depois envie uma mensagem, depois gere outra imagem"), execute UMA ferramenta por vez. Após executar uma ferramenta, você receberá sua resposta e poderá continuar com a próxima ação. Isso cria um fluxo mais natural e controlado.
 
@@ -352,8 +352,15 @@ async function toolCall(messages, response, tools, from, id, userContent, recurs
 
   // ESTRATÉGIA: Processar apenas a PRIMEIRA tool_call para manter o fluxo conversacional natural
   // Se há múltiplas tool_calls, processa só a primeira e deixa a IA decidir o próximo passo
-  const toolCallsToProcess = response.message.tool_calls.slice(0, 1); // Apenas a primeira
+  let toolCallsToProcess = response.message.tool_calls.slice(0, 1); // Apenas a primeira
   const totalToolCalls = response.message.tool_calls.length;
+  
+  // DETECÇÃO ESPECIAL: Se há múltiplas chamadas de send_message, isso é spam - processar apenas uma
+  const sendMessageCalls = response.message.tool_calls.filter(tc => tc.function.name === 'send_message');
+  if (sendMessageCalls.length > 1) {
+    console.log(`[ToolCall] 🚨 DETECTADAS ${sendMessageCalls.length} chamadas de send_message - isso é SPAM! Processando apenas a primeira.`);
+    toolCallsToProcess = [sendMessageCalls[0]]; // Apenas a primeira send_message
+  }
   
   if (totalToolCalls > 1) {
     console.log(`[ToolCall] ⚠️ DETECTADAS ${totalToolCalls} tool_calls. Processando apenas a primeira para manter fluxo sequencial.`);
@@ -502,6 +509,15 @@ async function toolCall(messages, response, tools, from, id, userContent, recurs
   const sanitizedToolMessages = sanitizeMessagesForChat(newMessages);
   console.log(`[ToolCall] 🧹 Mensagens sanitizadas para tool call: ${newMessages.length} -> ${sanitizedToolMessages.length}`);
   
+  // ORIENTAÇÃO ANTI-SPAM: Adicionar um prompt específico para orientar a IA sobre não fazer spam
+  if (recursiveState.depth > 0) {
+    const antiSpamPrompt = {
+      role: 'system',
+      content: `IMPORTANTE: Você acabou de executar uma ferramenta. Se você quiser se comunicar com o usuário agora, use APENAS UMA chamada de 'send_message'. NÃO faça múltiplas chamadas de send_message de uma só vez - isso é considerado spam. Seja conciso e natural em suas respostas.`
+    };
+    sanitizedToolMessages.splice(-2, 0, antiSpamPrompt); // Inserir antes da última mensagem assistant
+  }
+  
   // ESTRATÉGIA MELHORADA: Permitir que a IA continue processando tool_calls, mas UMA por vez
   // Isso permite fluxos como: imagem -> mensagem -> imagem -> mensagem
   const newResponse = await chatAi(sanitizedToolMessages, undefined);
@@ -510,6 +526,17 @@ async function toolCall(messages, response, tools, from, id, userContent, recurs
 
   if (normalizedNewResponse.message.tool_calls && normalizedNewResponse.message.tool_calls.length > 0) {
     console.log(`[ToolCall] 🔁 IA quer executar ${normalizedNewResponse.message.tool_calls.length} ferramenta(s) adicional(is)`);
+    
+    // VERIFICAÇÃO ANTI-SPAM: Se a IA quer fazer múltiplas send_message calls, isso é spam
+    const newSendMessageCalls = normalizedNewResponse.message.tool_calls.filter(tc => tc.function.name === 'send_message');
+    if (newSendMessageCalls.length > 1) {
+      console.log(`[ToolCall] 🚨 IA TENTANDO FAZER SPAM: ${newSendMessageCalls.length} send_message calls detectadas. PARANDO para evitar spam.`);
+      console.log(`[ToolCall] � Sistema bloqueou múltiplas mensagens sequenciais para manter conversa natural.`);
+      
+      // Não continuar recursão para evitar spam
+      console.log(`[ToolCall] ✅ Execução de ferramentas concluída. Tempo total: ${Date.now() - toolStartTime}ms`);
+      return newMessages;
+    }
     
     // IMPORTANTE: Limitar a profundidade para evitar loops infinitos
     const MAX_RECURSIVE_CALLS = 5; // Máximo de 5 iterações
