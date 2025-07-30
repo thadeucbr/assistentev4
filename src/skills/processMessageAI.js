@@ -204,7 +204,7 @@ export default async function processMessage(message) {
 
     const chatMessages = [dynamicPrompt, ...messages, { role: 'user', content: userContent }];
     console.log(`[ProcessMessage] 💬 Gerando resposta principal... - ${new Date().toISOString()}`);
-    const response = await chatAi(chatMessages);
+    let response = await chatAi(chatMessages);
 
     console.log(`[ProcessMessage] ✅ Análises de IA concluídas (+${Date.now() - stepTime}ms)`);
 
