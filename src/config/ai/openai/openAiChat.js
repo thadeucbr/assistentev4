@@ -112,11 +112,12 @@ export default async function openAiChat(chatMessages, toolsParam) {
 
   if (!response.ok) {
     const errText = await response.text();
+      console.log('OpenAI chat response:', errText);
+  console.log('Body:', JSON.stringify(body));
     throw new Error(`OpenAI chat failed: ${response.status} ${errText}`);
   }
 
   const { choices } = await response.json();
-  console.log('OpenAI chat response:', choices);
-  console.log('Body:', body);
+
   return choices[0];
 }
