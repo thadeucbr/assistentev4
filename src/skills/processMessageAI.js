@@ -259,7 +259,6 @@ async function toolCall(messages, response, tools, from, id, userContent) {
   console.log(`[ToolCall] 🔧 Iniciando execução de ferramentas...`);
   let newMessages = [...messages];
 
-  // Normalize legacy function_call to the modern tool_calls format if necessary
   if (response.message.function_call) {
     console.log(`[ToolCall] 🔄 Convertendo function_call legado para tool_calls...`);
     response.message.tool_calls = [
@@ -281,7 +280,6 @@ async function toolCall(messages, response, tools, from, id, userContent) {
 
   console.log(`[ToolCall] 📋 Executando ${response.message.tool_calls.length} ferramenta(s) sequencialmente...`);
 
-  // Step 1: Sequentially execute all tool calls and add their results to the history.
   for (const toolCall of response.message.tool_calls) {
     const toolName = toolCall.function.name;
     let toolResultContent = '';
@@ -301,8 +299,6 @@ async function toolCall(messages, response, tools, from, id, userContent) {
           toolResultContent = `Mensagem enviada ao usuário: "${args.content}"`;
           break;
 
-        // ... other tool cases would go here ...
-
         default:
           console.warn(`[ToolCall] Ferramenta desconhecida encontrada: ${toolName}`);
           toolResultContent = `Ferramenta desconhecida: ${toolName}`;
@@ -321,13 +317,11 @@ async function toolCall(messages, response, tools, from, id, userContent) {
     });
   }
 
-  // Step 2: Always call the AI again with the tool results for it to decide the next step.
   console.log(`[ToolCall] 🔄 Enviando todos os resultados das ferramentas para a IA...`);
   const newResponse = await chatAi(newMessages, tools);
   const normalizedNewResponse = normalizeAiResponse(newResponse);
   newMessages.push(normalizedNewResponse.message);
 
-  // Step 3: Handle recursive tool calls if the model asks for more tools.
   if (normalizedNewResponse.message.tool_calls && normalizedNewResponse.message.tool_calls.length > 0) {
     console.log(`[ToolCall] 🔁 Ferramentas adicionais detectadas, executando recursivamente...`);
     return toolCall(newMessages, normalizedNewResponse, tools, from, id, userContent);
