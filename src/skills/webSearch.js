@@ -13,7 +13,7 @@ function getChromeExecutablePath() {
   }
 }
 
-export default async function webSearch({ query }) {
+export default async function webSearch(query) {
   console.log(`Performing web search on Bing for: "${query}"`);
   let browser = null;
   try {
