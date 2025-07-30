@@ -49,6 +49,8 @@ function sanitizeMessagesForChat(messages) {
   const cleanMessages = [];
   const skip = new Set(); // Índices de mensagens a pular
   
+  console.log(`[Sanitize] 🧹 Iniciando sanitização de ${messages.length} mensagens...`);
+  
   // Primeiro passo: identificar todas as mensagens assistant órfãs e suas tool responses
   for (let i = 0; i < messages.length; i++) {
     if (skip.has(i)) continue;
@@ -83,6 +85,32 @@ function sanitizeMessagesForChat(messages) {
         
         // Marcar as tool responses encontradas para remoção também (para manter consistência)
         toolResponseIndices.forEach(idx => skip.add(idx));
+      }
+    }
+    
+    // Remover mensagens assistant vazias (sem content e sem tool_calls)
+    if (message.role === 'assistant' && !message.content && (!message.tool_calls || message.tool_calls.length === 0)) {
+      console.log(`[Sanitize] 🗑️ Removendo mensagem assistant vazia (índice ${i})`);
+      skip.add(i);
+    }
+    
+    // Remover mensagens tool órfãs (tool responses sem assistant correspondente)
+    if (message.role === 'tool' && message.tool_call_id) {
+      let foundCorrespondingAssistant = false;
+      for (let k = 0; k < i; k++) {
+        const prevMsg = messages[k];
+        if (prevMsg.role === 'assistant' && prevMsg.tool_calls) {
+          const toolCallIds = prevMsg.tool_calls.map(tc => tc.id);
+          if (toolCallIds.includes(message.tool_call_id)) {
+            foundCorrespondingAssistant = true;
+            break;
+          }
+        }
+      }
+      
+      if (!foundCorrespondingAssistant) {
+        console.log(`[Sanitize] 🗑️ Removendo mensagem tool órfã (índice ${i}) com tool_call_id: ${message.tool_call_id}`);
+        skip.add(i);
       }
     }
   }
@@ -274,12 +302,24 @@ export default async function processMessage(message) {
     console.log(`[ProcessMessage] 🎨 Inferindo estilo de interação... - ${new Date().toISOString()}`);
     const inferredStyle = await inferInteractionStyle(userContent);
 
-    const chatMessages = [dynamicPrompt, ...messages, { role: 'user', content: userContent }];
+    const chatMessages = [SYSTEM_PROMPT, dynamicPrompt, ...messages, { role: 'user', content: userContent }];
     
     // ANTI-SPAM: Adicionar prompt específico para prevenir múltiplas mensagens desnecessárias
     const antiSpamPrompt = {
       role: 'system',
-      content: `CRÍTICO: Esta é sua PRIMEIRA resposta para esta mensagem do usuário. Para mensagens simples como saudações ("Olá", "Oi", "Como está?"), responda com APENAS UMA função 'send_message' contendo uma resposta amigável e completa. NÃO faça múltiplas chamadas de send_message a menos que o usuário EXPLICITAMENTE solicite múltiplas mensagens. Seja natural e conciso.`
+      content: `CRÍTICO ANTI-SPAM: Esta é sua PRIMEIRA resposta para "${userContent}". 
+
+REGRA ABSOLUTA: Para saudações simples como "Olá", "Oi", "Como está?" → Responda com APENAS UMA função 'send_message' contendo uma resposta amigável e completa.
+
+EXEMPLO CORRETO para "Oi":
+- ✅ UMA chamada: send_message("Oi! Tudo bem? Como posso ajudar você hoje? 😊")
+
+EXEMPLO INCORRETO (SPAM):
+- ❌ MÚLTIPLAS chamadas: send_message("Oi!") + send_message("Como está?") + send_message("Posso ajudar?")
+
+MÚLTIPLAS MENSAGENS SÃO PERMITIDAS APENAS se o usuário EXPLICITAMENTE solicitar (ex: "envie 3 piadas", "faça 2 sugestões").
+
+Seja natural, amigável e conciso em UMA ÚNICA mensagem.`
     };
     
     chatMessages.push(antiSpamPrompt);
@@ -292,6 +332,34 @@ export default async function processMessage(message) {
 
     console.log(`[ProcessMessage] ✅ Análises de IA concluídas (+${Date.now() - stepTime}ms)`);
 
+    // --- Process AI Response ---
+    stepTime = Date.now();
+    console.log(`[ProcessMessage] � Normalizando resposta da IA... - ${new Date().toISOString()}`);
+    response = normalizeAiResponse(response);
+    
+    // VERIFICAÇÃO CRÍTICA ANTI-SPAM: Bloquear múltiplas send_message na primeira resposta
+    if (response.message.tool_calls && response.message.tool_calls.length > 0) {
+      const sendMessageCalls = response.message.tool_calls.filter(tc => tc.function.name === 'send_message');
+      if (sendMessageCalls.length > 1) {
+        const userRequestedMultiple = isMultipleMessagesRequested(userContent);
+        
+        if (!userRequestedMultiple) {
+          console.log(`[ProcessMessage] 🚨 BLOQUEANDO SPAM NA PRIMEIRA RESPOSTA: ${sendMessageCalls.length} send_message calls para "${userContent}"`);
+          console.log(`[ProcessMessage] 🛡️ Mantendo apenas a primeira mensagem para evitar spam.`);
+          
+          // Manter apenas a primeira send_message call
+          const keptToolCalls = [sendMessageCalls[0]];
+          const otherToolCalls = response.message.tool_calls.filter(tc => tc.function.name !== 'send_message');
+          
+          response.message.tool_calls = [...keptToolCalls, ...otherToolCalls];
+        } else {
+          console.log(`[ProcessMessage] ✅ Múltiplas mensagens autorizadas pelo usuário: "${userContent}"`);
+        }
+      }
+    }
+    
+    console.log(`[ProcessMessage] ✅ Resposta normalizada e verificada (+${Date.now() - stepTime}ms)`);
+
     // Update user profile with the latest sentiment and style (quick, synchronous update)
     stepTime = Date.now();
     console.log(`[ProcessMessage] 📝 Atualizando perfil do usuário (sentimento/estilo)... - ${new Date().toISOString()}`);
@@ -302,12 +370,6 @@ export default async function processMessage(message) {
     };
     await updateUserProfile(userId, updatedProfile);
     console.log(`[ProcessMessage] ✅ Perfil (sentimento/estilo) atualizado (+${Date.now() - stepTime}ms)`);
-
-    // --- Process AI Response ---
-    stepTime = Date.now();
-    console.log(`[ProcessMessage] 🔧 Normalizando resposta da IA... - ${new Date().toISOString()}`);
-    response = normalizeAiResponse(response);
-    console.log(`[ProcessMessage] ✅ Resposta normalizada (+${Date.now() - stepTime}ms)`);
 
     messages.push({ role: 'user', content: userContent });
     messages.push(response.message);
