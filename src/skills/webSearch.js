@@ -46,14 +46,14 @@ export default async function webSearch(query) {
         console.log('Snippet element:', snippetElement);
 
         if (titleElement && linkElement) { // Snippet is optional
-          results.push({
+          results.push(JSON.stringify({
             title: titleElement.innerText.trim(),
             link: linkElement.href,
             snippet: snippetElement ? snippetElement.innerText.trim() : ''
-          });
+          }));
         }
       });
-      return results.slice(0, 5); // Retorna os 5 primeiros resultados
+      return results; // Retorna os 5 primeiros resultados
     });
 
     return { results: JSON.stringify(searchResults) };
