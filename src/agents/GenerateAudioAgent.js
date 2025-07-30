@@ -31,11 +31,11 @@ export async function execute(userQuery, from, id) {
 
   if (response.message.tool_calls && response.message.tool_calls.length > 0) {
     for (const toolCall of response.message.tool_calls) {
-      const args = toolCall.function.arguments;
+      const args = JSON.parse(toolCall.function.arguments);
 
-      if (toolCall.function.name === 'audio_generation_agent') {
+      if (toolCall.function.name === 'generate_audio') {
         console.log('Generating audio with args:', args);
-        const audioResult = await generateAudio(args.query);
+        const audioResult = await generateAudio(args.text);
         if (audioResult.success) {
           await sendPtt(from, audioResult.audioBuffer, id);
           return `Áudio gerado e enviado: "${args.text}"`;

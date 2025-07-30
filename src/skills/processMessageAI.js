@@ -494,7 +494,7 @@ async function toolCall(messages, response, tools, from, id, userContent) {
         case 'audio_generation_agent':
           const audio = await generateAudio(args.query);
           if (audio && !audio.error) {
-            await sendPtt(from, audio);
+            await sendPtt(from, audio.audioBuffer);
             toolResultContent = `Áudio gerado e enviado: "${args.query}"`;
           } else {
             toolResultContent = `Erro ao gerar áudio: ${audio?.error || 'Erro desconhecido'}`;

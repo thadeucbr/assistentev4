@@ -1,19 +1,27 @@
 import logError from '../utils/logger.js';
 
 
-const SEND_PTT_ENDPOINT = 'http://192.168.1.239:8088/sendPtt';
+const SEND_PTT_ENDPOINT = `${process.env.WHATSAPP_URL}/sendFile`;
 
 export default async function sendPtt(recipientId, audioBuffer, quotedMsgId) {
   try {
+    console.log('sendPtt: Iniciando envio de PTT para:', recipientId);
+    console.log('sendPtt: Tamanho do buffer de áudio:', audioBuffer.length, 'bytes');
+    
     const audioDataUri = `data:audio/ogg;base64,${audioBuffer.toString('base64')}`;
 
     const payload = {
       args: {
         to: recipientId,
         file: audioDataUri,
+        filename: "audio.ogg",
         quotedMsgId: quotedMsgId || undefined,
+        waitForId: false,
+        ptt: true
       },
     };
+
+    console.log('sendPtt: Payload preparado, enviando para:', SEND_PTT_ENDPOINT);
 
     const fetchResponse = await fetch(SEND_PTT_ENDPOINT, {
       method: 'POST',
