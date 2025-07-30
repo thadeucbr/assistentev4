@@ -191,22 +191,21 @@ export default async function processMessage(message) {
     }
     console.log(`[ProcessMessage] ✅ Prompt dinâmico construído (+${Date.now() - stepTime}ms)`);
 
-    // --- Parallel AI Analysis ---
+    // --- Sequential AI Analysis ---
     stepTime = Date.now();
-    console.log(`[ProcessMessage] 🚀 Iniciando análises de IA em paralelo... - ${new Date().toISOString()}`);
+    console.log(`[ProcessMessage] 🚀 Iniciando análises de IA sequencialmente... - ${new Date().toISOString()}`);
     simulateTyping(data.from, true);
 
-    const sentimentPromise = analyzeSentiment(userContent);
-    const stylePromise = inferInteractionStyle(userContent);
+    console.log(`[ProcessMessage] 📊 Analisando sentimento... - ${new Date().toISOString()}`);
+    const currentSentiment = await analyzeSentiment(userContent);
+    
+    console.log(`[ProcessMessage] 🎨 Inferindo estilo de interação... - ${new Date().toISOString()}`);
+    const inferredStyle = await inferInteractionStyle(userContent);
 
     const chatMessages = [dynamicPrompt, ...messages, { role: 'user', content: userContent }];
-    const mainResponsePromise = chatAi(chatMessages);
+    console.log(`[ProcessMessage] 💬 Gerando resposta principal... - ${new Date().toISOString()}`);
+    const response = await chatAi(chatMessages);
 
-    let [currentSentiment, inferredStyle, response] = await Promise.all([
-      sentimentPromise,
-      stylePromise,
-      mainResponsePromise
-    ]);
     console.log(`[ProcessMessage] ✅ Análises de IA concluídas (+${Date.now() - stepTime}ms)`);
 
     // Update user profile with the latest sentiment and style (quick, synchronous update)
