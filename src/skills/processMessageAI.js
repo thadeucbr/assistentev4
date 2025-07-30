@@ -358,6 +358,12 @@ async function toolCall(messages, response, tools, from, id, userContent) {
       content: toolResultContent,
     };
     
+    // CRÍTICO: Garantir que já temos o tool_call_id correto para evitar problemas no sanitizeMessages
+    if (!toolResponse.tool_call_id) {
+      console.error(`[ToolCall] ⚠️ ERRO: tool_call_id ausente para ${toolCall.id}`);
+      toolResponse.tool_call_id = toolCall.id;
+    }
+    
     toolResponses.push(toolResponse);
     console.log(`[ToolCall] ✅ Resposta coletada para ${toolCall.id}: ${toolName} (original) -> ${actualToolName} (executado)`);
   }
@@ -406,6 +412,10 @@ async function toolCall(messages, response, tools, from, id, userContent) {
       console.log(`  [${index}] ${msg.role}: ${msg.content ? msg.content.substring(0, 50) + '...' : 'sem conteúdo'}`);
     }
   });
+  
+  // Log JSON completo para debug
+  console.log(`[ToolCall] 🔍 JSON das mensagens que serão enviadas:`);
+  console.log(JSON.stringify(newMessages, null, 2));
   
   const newResponse = await chatAi(newMessages, tools);
   const normalizedNewResponse = normalizeAiResponse(newResponse);
