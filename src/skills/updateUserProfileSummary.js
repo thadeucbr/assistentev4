@@ -4,7 +4,7 @@ import { getUserProfile, updateUserProfile } from '../repository/userProfileRepo
 import { retryAiJsonCall } from '../utils/aiResponseUtils.js';
 import logError from '../utils/logger.js';
 
-// Função para sanitizar mensagens antes de enviar para a IA (cópia da função do processMessageAI.js)
+// Função para sanitizar mensagens antes de enviar para a IA
 function sanitizeMessagesForChat(messages) {
   const cleanMessages = [];
   const validToolCallIds = new Set();
@@ -16,7 +16,6 @@ function sanitizeMessagesForChat(messages) {
       const toolCallIds = message.tool_calls.map(tc => tc.id);
       
       // Verificar se todas as tool responses existem para esta mensagem assistant
-      let allToolResponsesFound = true;
       const toolResponsesMap = new Map();
       
       // Procurar por todas as tool responses correspondentes
@@ -31,6 +30,8 @@ function sanitizeMessagesForChat(messages) {
       if (toolResponsesMap.size === toolCallIds.length) {
         // Todas as tool responses existem, adicionar os IDs como válidos
         toolCallIds.forEach(id => validToolCallIds.add(id));
+      } else {
+        console.debug(`[SANITIZE] Mensagem assistant com tool_calls incompletas será removida: esperado ${toolCallIds.length}, encontrado ${toolResponsesMap.size}`);
       }
     }
   }
@@ -46,16 +47,22 @@ function sanitizeMessagesForChat(messages) {
       
       if (allToolCallsValid) {
         cleanMessages.push(message);
+      } else {
+        console.debug(`[SANITIZE] Removendo mensagem assistant órfã com tool_calls: ${toolCallIds.join(', ')}`);
       }
     } else if (message.role === 'assistant') {
       // Para mensagens assistant sem tool_calls, verificar se têm conteúdo válido
       if (message.content && message.content.trim().length > 0) {
         cleanMessages.push(message);
+      } else {
+        console.debug('[SANITIZE] Removendo mensagem assistant vazia ou sem conteúdo');
       }
     } else if (message.role === 'tool') {
-      // Só incluir tool messages que correspondem a tool_calls válidos
+      // CRÍTICO: Só incluir tool messages que correspondem a tool_calls válidos
       if (message.tool_call_id && validToolCallIds.has(message.tool_call_id)) {
         cleanMessages.push(message);
+      } else {
+        console.debug(`[SANITIZE] Removendo mensagem tool órfã: tool_call_id=${message.tool_call_id}`);
       }
     } else {
       // Para outras mensagens (user, system), sempre incluir
@@ -63,7 +70,37 @@ function sanitizeMessagesForChat(messages) {
     }
   }
   
-  return cleanMessages;
+  // Validação final: verificar se não há mensagens tool órfãs
+  const finalCleanMessages = [];
+  for (let i = 0; i < cleanMessages.length; i++) {
+    const message = cleanMessages[i];
+    
+    if (message.role === 'tool') {
+      // Verificar se existe uma mensagem assistant precedente com o tool_call correspondente
+      let foundPrecedingToolCall = false;
+      for (let j = i - 1; j >= 0; j--) {
+        const prevMessage = cleanMessages[j];
+        if (prevMessage.role === 'assistant' && prevMessage.tool_calls) {
+          const hasMatchingToolCall = prevMessage.tool_calls.some(tc => tc.id === message.tool_call_id);
+          if (hasMatchingToolCall) {
+            foundPrecedingToolCall = true;
+            break;
+          }
+        }
+      }
+      
+      if (foundPrecedingToolCall) {
+        finalCleanMessages.push(message);
+      } else {
+        console.debug(`[SANITIZE] Validação final: removendo mensagem tool órfã: tool_call_id=${message.tool_call_id}`);
+      }
+    } else {
+      finalCleanMessages.push(message);
+    }
+  }
+  
+  console.debug(`[SANITIZE] Mensagens sanitizadas: ${messages.length} -> ${finalCleanMessages.length}`);
+  return finalCleanMessages;
 }
 
 const SUMMARY_PROMPT = {
