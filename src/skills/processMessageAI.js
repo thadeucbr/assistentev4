@@ -465,8 +465,12 @@ async function toolCall(messages, response, tools, from, id, userContent) {
   console.log(`[ToolCall] 🔍 JSON das mensagens que serão enviadas:`);
   console.log(JSON.stringify(newMessages, null, 2));
   
+  // CRÍTICO: Sanitizar mensagens antes de enviar para evitar tool_calls órfãs
+  const sanitizedToolMessages = sanitizeMessagesForChat(newMessages);
+  console.log(`[ToolCall] 🧹 Mensagens sanitizadas para tool call: ${newMessages.length} -> ${sanitizedToolMessages.length}`);
+  
   // Modificar o toolsParam para undefined para permitir resposta livre (sem tool_choice="required")
-  const newResponse = await chatAi(newMessages, undefined);
+  const newResponse = await chatAi(sanitizedToolMessages, undefined);
   const normalizedNewResponse = normalizeAiResponse(newResponse);
   newMessages.push(normalizedNewResponse.message);
 
