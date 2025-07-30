@@ -44,6 +44,80 @@ import generateAudio from './generateAudio.js';
 import sendPtt from '../whatsapp/sendPtt.js';
 const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
 
+// Função para sanitizar mensagens antes de enviar para a IA
+function sanitizeMessagesForChat(messages) {
+  const cleanMessages = [];
+  const validToolCallIds = new Set();
+  
+  // Primeira passada: coletar todos os tool_call_ids válidos
+  for (let i = 0; i < messages.length; i++) {
+    const message = messages[i];
+    if (message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0) {
+      const toolCallIds = message.tool_calls.map(tc => tc.id);
+      
+      // Verificar se todas as tool responses existem para esta mensagem assistant
+      let allToolResponsesFound = true;
+      const toolResponsesMap = new Map();
+      
+      // Procurar por todas as tool responses correspondentes
+      for (let j = i + 1; j < messages.length; j++) {
+        const nextMsg = messages[j];
+        if (nextMsg.role === 'tool' && toolCallIds.includes(nextMsg.tool_call_id)) {
+          toolResponsesMap.set(nextMsg.tool_call_id, nextMsg);
+        }
+      }
+      
+      // Verificar se encontrou resposta para todos os tool_calls
+      if (toolResponsesMap.size === toolCallIds.length) {
+        // Todas as tool responses existem, adicionar os IDs como válidos
+        toolCallIds.forEach(id => validToolCallIds.add(id));
+      } else {
+        console.log(`[Sanitize] ⚠️ Mensagem assistant com tool_calls incompletas será removida: esperado ${toolCallIds.length}, encontrado ${toolResponsesMap.size}`);
+      }
+    }
+  }
+  
+  // Segunda passada: construir mensagens limpas
+  for (let i = 0; i < messages.length; i++) {
+    const message = messages[i];
+    
+    if (message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0) {
+      // Só incluir se todos os tool_calls desta mensagem são válidos
+      const toolCallIds = message.tool_calls.map(tc => tc.id);
+      const allToolCallsValid = toolCallIds.every(id => validToolCallIds.has(id));
+      
+      if (allToolCallsValid) {
+        cleanMessages.push(message);
+      } else {
+        console.log(`[Sanitize] 🗑️ Removendo mensagem assistant órfã com tool_calls: ${toolCallIds.join(', ')}`);
+        console.log(`[Sanitize] 🔍 Detalhes da mensagem assistant removida:`, JSON.stringify(message, null, 2));
+      }
+    } else if (message.role === 'assistant') {
+      // Para mensagens assistant sem tool_calls, verificar se têm conteúdo válido
+      if (message.content && message.content.trim().length > 0) {
+        cleanMessages.push(message);
+      } else {
+        console.log(`[Sanitize] 🗑️ Removendo mensagem assistant vazia ou sem conteúdo`);
+        console.log(`[Sanitize] 🔍 Detalhes da mensagem assistant vazia:`, JSON.stringify(message, null, 2));
+      }
+    } else if (message.role === 'tool') {
+      // Só incluir tool messages que correspondem a tool_calls válidos
+      if (message.tool_call_id && validToolCallIds.has(message.tool_call_id)) {
+        cleanMessages.push(message);
+      } else {
+        console.log(`[Sanitize] 🗑️ Removendo mensagem tool órfã: tool_call_id=${message.tool_call_id}`);
+        console.log(`[Sanitize] 🔍 Detalhes da mensagem tool removida:`, JSON.stringify(message, null, 2));
+      }
+    } else {
+      // Para outras mensagens (user, system, assistant sem tool_calls), sempre incluir
+      cleanMessages.push(message);
+    }
+  }
+  
+  console.log(`[Sanitize] 🧹 Mensagens sanitizadas: ${messages.length} -> ${cleanMessages.length}`);
+  return cleanMessages;
+}
+
 const SYSTEM_PROMPT = {
   role: 'system',
   content: `Você é um assistente de IA. Sua principal forma de comunicação com o usuário é através da função 'send_message'.
@@ -84,19 +158,18 @@ export default async function processMessage(message) {
     const userContent = (data.body || (data.type === 'image' ? 'Analyze this image' : ''))
       .replace(process.env.WHATSAPP_NUMBER, '')
       .trim();
-    
-    // Validate userContent early to prevent embedding errors
-    if (!userContent || userContent.length === 0) {
-      console.warn(`[ProcessMessage] ⚠️ userContent is empty, skipping processing`);
-      return;
-    }
-    
     const userId = data.from.replace('@c.us', '');
     
     stepTime = Date.now();
     console.log(`[ProcessMessage] 📖 Carregando contexto do usuário... - ${new Date().toISOString()}`);
     let { messages } = await getUserContext(userId); // This 'messages' is our STM
     console.log(`[ProcessMessage] ✅ Contexto carregado (+${Date.now() - stepTime}ms)`);
+    
+    // CRÍTICO: Sanitizar contexto histórico para remover mensagens órfãs corrompidas
+    stepTime = Date.now();
+    console.log(`[ProcessMessage] 🧹 Sanitizando contexto histórico... - ${new Date().toISOString()}`);
+    messages = sanitizeMessagesForChat(messages);
+    console.log(`[ProcessMessage] ✅ Contexto histórico sanitizado (+${Date.now() - stepTime}ms)`);
     
     stepTime = Date.now();
     console.log(`[ProcessMessage] 👤 Carregando perfil do usuário... - ${new Date().toISOString()}`);
@@ -121,20 +194,15 @@ export default async function processMessage(message) {
       
       const stmTypingPromise = simulateTyping(data.from, true);
       
-      // Ensure userContent is not null or empty before creating embedding
-      if (!userContent || typeof userContent !== 'string' || userContent.trim().length === 0) {
-        throw new Error('User content is null, undefined, or empty');
-      }
-      
       const userEmbedding = await embeddingModel.embedQuery(userContent);
 
       const messagesWithEmbeddings = await Promise.all(
         warmMessages.map(async (msg) => {
-          if ((msg.role === 'user' || msg.role === 'assistant') && msg.content && typeof msg.content === 'string' && msg.content.trim().length > 0) {
+          if ((msg.role === 'user' || msg.role === 'assistant') && typeof msg.content === 'string' && msg.content.length > 0) {
             const embedding = await embeddingModel.embedQuery(msg.content);
             return { ...msg, embedding };
           }
-          return msg;
+          return msg; // Retorna a mensagem sem embedding se o conteúdo for nulo ou vazio
         })
       );
 
@@ -179,7 +247,7 @@ export default async function processMessage(message) {
     console.log(`[ProcessMessage] 🛠️ Construindo prompt dinâmico... - ${new Date().toISOString()}`);
     const dynamicPrompt = {
       role: 'system',
-      content: `Você é um assistente que pode responder perguntas, gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias como Mega-Sena, Quina e Lotofácil.\n\nIMPORTANTE: Ao usar ferramentas (functions/tools), siga exatamente as instruções de uso de cada função, conforme descrito no campo 'description' de cada uma.\n\nSe não tiver certeza de como usar uma função, explique o motivo e peça mais informações. Nunca ignore as instruções do campo 'description' das funções.`
+      content: `Você é um assistente que pode responder perguntas, gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias como Mega-Sena, Quina e Lotofácil.\n\nIMPORTANTE: Ao usar ferramentas (functions/tools), siga exatamente as instruções de uso de cada função, conforme descrito no campo 'description' de cada uma.\n\nSe não tiver certeza de como usar uma função, explique o motivo e peça mais informações. Nunca ignore as instruções do campo 'description' das funções.\n\nCRÍTICO: Todas as respostas diretas ao usuário devem ser enviadas usando a ferramenta 'send_message'. Não responda diretamente.`
     };
 
     if (userProfile) {
@@ -203,22 +271,25 @@ export default async function processMessage(message) {
     }
     console.log(`[ProcessMessage] ✅ Prompt dinâmico construído (+${Date.now() - stepTime}ms)`);
 
-    // --- Parallel AI Analysis ---
+    // --- Sequential AI Analysis ---
     stepTime = Date.now();
-    console.log(`[ProcessMessage] 🚀 Iniciando análises de IA em paralelo... - ${new Date().toISOString()}`);
+    console.log(`[ProcessMessage] 🚀 Iniciando análises de IA sequencialmente... - ${new Date().toISOString()}`);
     simulateTyping(data.from, true);
 
-    const sentimentPromise = analyzeSentiment(userContent);
-    const stylePromise = inferInteractionStyle(userContent);
+    console.log(`[ProcessMessage] 📊 Analisando sentimento... - ${new Date().toISOString()}`);
+    const currentSentiment = await analyzeSentiment(userContent);
+    
+    console.log(`[ProcessMessage] 🎨 Inferindo estilo de interação... - ${new Date().toISOString()}`);
+    const inferredStyle = await inferInteractionStyle(userContent);
 
     const chatMessages = [dynamicPrompt, ...messages, { role: 'user', content: userContent }];
-    const mainResponsePromise = chatAi(chatMessages);
+    
+    // CRÍTICO: Sanitizar mensagens antes de enviar para evitar tool_calls órfãs
+    const sanitizedChatMessages = sanitizeMessagesForChat(chatMessages);
+    
+    console.log(`[ProcessMessage] 💬 Gerando resposta principal... - ${new Date().toISOString()}`);
+    let response = await chatAi(sanitizedChatMessages);
 
-    let [currentSentiment, inferredStyle, response] = await Promise.all([
-      sentimentPromise,
-      stylePromise,
-      mainResponsePromise
-    ]);
     console.log(`[ProcessMessage] ✅ Análises de IA concluídas (+${Date.now() - stepTime}ms)`);
 
     // Update user profile with the latest sentiment and style (quick, synchronous update)
@@ -268,127 +339,182 @@ export default async function processMessage(message) {
 
 async function toolCall(messages, response, tools, from, id, userContent) {
   const toolStartTime = Date.now();
-  console.log(`[ToolCall] 🔧 Iniciando execução de ferramentas - ${new Date().toISOString()}`);
-  const newMessages = messages;
-  let directCommunicationOccurred = false; // Flag to track if a direct communication tool was used
-  
+  console.log(`[ToolCall] 🔧 Iniciando execução de ferramentas...`);
+  let newMessages = [...messages];
+
   if (response.message.function_call) {
-    console.log(`[ToolCall] 🔄 Convertendo function_call para tool_calls... - ${new Date().toISOString()}`);
+    console.log(`[ToolCall] 🔄 Convertendo function_call legado para tool_calls...`);
     response.message.tool_calls = [
       {
+        id: `call_legacy_${Date.now()}`,
+        type: 'function',
         function: {
           name: response.message.function_call.name,
-          arguments: JSON.parse(response.message.function_call.arguments)
-        }
-      }
+          arguments: response.message.function_call.arguments,
+        },
+      },
     ];
   }
-  
-  if (response.message.tool_calls && response.message.tool_calls.length > 0) {
-    console.log(`[ToolCall] 📋 Executando ${response.message.tool_calls.length} ferramenta(s) - ${new Date().toISOString()}`);
-    
-    for (const toolCall of response.message.tool_calls) {
-      const args = toolCall.function.arguments;
-      let stepTime = Date.now();
-      
-      if (toolCall.function.name === 'generate_image') {
-        console.log(`[ToolCall] 🎨 Gerando imagem... - ${new Date().toISOString()}`);
-        const image = await generateImage({ ...args });
-        if (image.error) {
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Erro ao gerar imagem: ${image.error}` });
-        } else {
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Image generated and sent: "${args.prompt}"` });
-          await sendImage(from, image, args.prompt);
-        }
-        console.log(`[ToolCall] ✅ Imagem processada (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'send_message') {
-        console.log(`[ToolCall] 💬 Enviando mensagem... - ${new Date().toISOString()}`);
-        newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Mensagem enviada ao usuário: "${args.content}"` });
-        await sendMessage(from, args.content);
-        directCommunicationOccurred = true; // Set flag
-        console.log(`[ToolCall] ✅ Mensagem enviada (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'analyze_image') {
-        console.log(`[ToolCall] 🔍 Analisando imagem... - ${new Date().toISOString()}`);
-        const analysis = await analyzeImage({ id, prompt: args.prompt });
-        newMessages.push({ name: toolCall.function.name, role: 'tool', content: analysis });
-        console.log(`[ToolCall] ✅ Imagem analisada (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'reminder') {
-        console.log(`[ToolCall] ⏰ Processando lembrete... - ${new Date().toISOString()}`);
-        if (args.action === 'create') {
-          const newReminder = await addReminder(from, args.message, args.scheduledTime);
-          scheduleReminder(newReminder);
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Lembrete criado: ${JSON.stringify(newReminder)}` });
-        } else if (args.action === 'list') {
-          const reminders = await getReminders(from);
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Seus lembretes: ${JSON.stringify(reminders)}` });
-        }
-        console.log(`[ToolCall] ✅ Lembrete processado (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'lottery_check') {
-        console.log(`[ToolCall] 🎲 Verificando loteria... - ${new Date().toISOString()}`);
-        const result = await lotteryCheck(args.modalidade, args.sorteio);
-        newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
-        console.log(`[ToolCall] ✅ Loteria verificada (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'browse') {
-        console.log(`[ToolCall] 🌐 Navegando na web... - ${new Date().toISOString()}`);
-        const result = await browse({ url: args.url });
-        if (result.error && result.error.includes('net::ERR_NAME_NOT_RESOLVED')) {
-          console.warn(`[ToolCall] ⚠️ Browse falhou para ${args.url}, tentando busca web como fallback`);
-          const webSearchResult = await webSearch({ query: userContent });
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Browse failed. Attempted web search with query "${userContent}": ${JSON.stringify(webSearchResult)}` });
-        } else {
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
-        }
-        console.log(`[ToolCall] ✅ Navegação web concluída (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'web_search') {
-        console.log(`[ToolCall] 🔍 Buscando na web... - ${new Date().toISOString()}`);
-        const result = await webSearch({ query: args.query });
-        newMessages.push({ name: 'web_search', role: 'tool', content: JSON.stringify(result) });
-        console.log(`[ToolCall] ✅ Busca web concluída (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'generate_audio') {
-        console.log(`[ToolCall] 🔊 Gerando áudio... - ${new Date().toISOString()}`);
-        const audioResult = await generateAudio(args.textToSpeak);
-        if (audioResult.success) {
-          await sendPtt(from, audioResult.audioBuffer, id);
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Áudio gerado e enviado: "${args.textToSpeak}"` });
-          directCommunicationOccurred = true; // Set flag
-        } else {
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Erro ao gerar áudio: ${audioResult.error}` });
-        }
-        console.log(`[ToolCall] ✅ Áudio processado (+${Date.now() - stepTime}ms)`);
-      }
-    }
 
-    // If a direct communication tool was used, we are done with this turn.
-    if (directCommunicationOccurred) {
-      console.log(`[ToolCall] ✅ Comunicação direta executada, finalizando - TEMPO TOTAL TOOLS: ${Date.now() - toolStartTime}ms - ${new Date().toISOString()}`);
-      return newMessages;
-    }
-
-    let stepTime = Date.now();
-    console.log(`[ToolCall] 🔄 Enviando resposta das ferramentas para IA... - ${new Date().toISOString()}`);
-    const newResponse = await chatAi(newMessages);
-    console.log(`[ToolCall] ✅ Nova resposta da IA recebida (+${Date.now() - stepTime}ms)`);
-
-    // Normalizar a resposta para garantir estrutura consistente
-    stepTime = Date.now();
-    console.log(`[ToolCall] 🔧 Normalizando nova resposta da IA... - ${new Date().toISOString()}`);
-    const normalizedNewResponse = normalizeAiResponse(newResponse);
-    console.log(`[ToolCall] ✅ Nova resposta normalizada (+${Date.now() - stepTime}ms)`);
-
-    newMessages.push(normalizedNewResponse.message);
-    if ((normalizedNewResponse.message.tool_calls && normalizedNewResponse.message.tool_calls.length > 0) || normalizedNewResponse.message.function_call) {
-      console.log(`[ToolCall] 🔁 Ferramentas adicionais detectadas, executando recursivamente... - ${new Date().toISOString()}`);
-      return toolCall(newMessages, normalizedNewResponse, tools, from, id);
-    }
-
-    // Fallback for when the model forgets to use the send_message tool
-    // if (normalizedNewResponse.message.content && normalizedNewResponse.message.content.trim().length > 0) {
-    //   await sendMessage(from, normalizedNewResponse.message.content);
-    // }
-
-    console.log(`[ToolCall] ✅ Execução de ferramentas concluída - TEMPO TOTAL TOOLS: ${Date.now() - toolStartTime}ms - ${new Date().toISOString()}`);
-    return newMessages;
+  if (!response.message.tool_calls || response.message.tool_calls.length === 0) {
+    console.log(`[ToolCall] ⚠️ Nenhuma ferramenta para executar.`);
+    return messages;
   }
-  console.log(`[ToolCall] ⚠️ Nenhuma ferramenta para executar - ${new Date().toISOString()}`);
-  return messages;
+
+  console.log(`[ToolCall] 📋 Executando ${response.message.tool_calls.length} ferramenta(s) sequencialmente...`);
+
+  // Coletar todas as respostas das ferramentas primeiro
+  const toolResponses = [];
+  
+  for (const toolCall of response.message.tool_calls) {
+    const toolName = toolCall.function.name;
+    let toolResultContent = '';
+    let actualToolName = toolName;
+
+    console.log(`[ToolCall] 🔧 Processando tool_call: ${toolCall.id} - ${toolName}`);
+
+    try {
+      const args = JSON.parse(toolCall.function.arguments);
+
+      // Normalizar nomes de ferramentas com erros de digitação
+      if (toolName === 'ssend_message') {
+        actualToolName = 'send_message';
+        console.log(`[ToolCall] ⚠️ Corrigindo nome da ferramenta de '${toolName}' para '${actualToolName}'`);
+      }
+
+      switch (actualToolName) {
+        case 'image_generation_agent':
+          const image = await generateImage({ ...args });
+          toolResultContent = image.error ? `Erro ao gerar imagem: ${image.error}` : `Image generated and sent: "${args.prompt}"`;
+          if (!image.error) await sendImage(from, image, args.prompt);
+          break;
+
+        case 'send_message':
+          await sendMessage(from, args.content);
+          toolResultContent = `Mensagem enviada ao usuário: "${args.content}"`;
+          break;
+
+        case 'image_analysis_agent':
+          const analysis = await analyzeImage({ ...args });
+          toolResultContent = analysis.error ? `Erro ao analisar imagem: ${analysis.error}` : `Imagem analisada com sucesso`;
+          break;
+
+        case 'reminder_agent':
+          // Aqui você precisará implementar a lógica para reminders
+          toolResultContent = `Funcionalidade de lembrete processada: ${args.query}`;
+          break;
+
+        case 'lottery_check_agent':
+          const lotteryResult = await lotteryCheck(args.query);
+          toolResultContent = `Resultado da loteria verificado: ${args.query}`;
+          break;
+
+        case 'audio_generation_agent':
+          const audio = await generateAudio(args.query);
+          if (audio && !audio.error) {
+            await sendPtt(from, audio);
+            toolResultContent = `Áudio gerado e enviado: "${args.query}"`;
+          } else {
+            toolResultContent = `Erro ao gerar áudio: ${audio?.error || 'Erro desconhecido'}`;
+          }
+          break;
+
+        case 'information_retrieval_agent':
+          const searchResult = await webSearch(args.query);
+          toolResultContent = `Busca realizada: ${args.query}`;
+          break;
+
+        default:
+          console.warn(`[ToolCall] Ferramenta desconhecida encontrada: ${toolName}`);
+          toolResultContent = `Ferramenta desconhecida: ${toolName}`;
+          break;
+      }
+    } catch (error) {
+      console.error(`[ToolCall] Erro ao executar ou analisar argumentos para a ferramenta ${toolName}:`, error);
+      toolResultContent = `Erro interno ao processar a ferramenta ${toolName}.`;
+    }
+
+    // Coletar resposta da ferramenta
+    const toolResponse = {
+      role: 'tool',
+      tool_call_id: toolCall.id,
+      // NÃO incluir 'name' para evitar problemas com sanitizeMessages
+      content: toolResultContent,
+    };
+    
+    // CRÍTICO: Garantir que já temos o tool_call_id correto para evitar problemas no sanitizeMessages
+    if (!toolResponse.tool_call_id) {
+      console.error(`[ToolCall] ⚠️ ERRO: tool_call_id ausente para ${toolCall.id}`);
+      toolResponse.tool_call_id = toolCall.id;
+    }
+    
+    toolResponses.push(toolResponse);
+    console.log(`[ToolCall] ✅ Resposta coletada para ${toolCall.id}: ${toolName} (original) -> ${actualToolName} (executado)`);
+  }
+
+  // Adicionar todas as respostas das ferramentas ao array de mensagens
+  newMessages.push(...toolResponses);
+
+  // Validação final para debug
+  const toolCallIds = response.message.tool_calls.map(tc => tc.id);
+  const toolResponseIds = toolResponses.map(tr => tr.tool_call_id);
+  
+  console.log(`[ToolCall] 📊 Debug - Tool call IDs esperados: ${toolCallIds.join(', ')}`);
+  console.log(`[ToolCall] 📊 Debug - Tool response IDs encontrados: ${toolResponseIds.join(', ')}`);
+  
+  const missingResponses = toolCallIds.filter(id => !toolResponseIds.includes(id));
+  if (missingResponses.length > 0) {
+    console.error(`[ToolCall] ⚠️ ERRO CRÍTICO: Tool calls sem resposta detectadas: ${missingResponses.join(', ')}`);
+    // Isso não deveria acontecer mais, mas vamos adicionar como fallback
+    for (const missingId of missingResponses) {
+      const fallbackResponse = {
+        role: 'tool',
+        tool_call_id: missingId,
+        content: 'Erro: ferramenta não encontrada ou falhou ao executar.',
+      };
+      toolResponses.push(fallbackResponse);
+      newMessages.push(fallbackResponse);
+      console.log(`[ToolCall] 🆘 Fallback: Adicionada resposta de erro para ${missingId}`);
+    }
+  }
+
+  console.log(`[ToolCall] 🔄 Enviando todos os resultados das ferramentas para a IA...`);
+  console.log(`[ToolCall] 📊 Total de mensagens a enviar: ${newMessages.length}`);
+  
+  // Log detalhado das mensagens para debug
+  console.log(`[ToolCall] 📋 Estrutura das mensagens a enviar:`);
+  newMessages.forEach((msg, index) => {
+    if (msg.role === 'tool') {
+      console.log(`  [${index}] ${msg.role}: tool_call_id=${msg.tool_call_id}, name=${msg.name}`);
+    } else if (msg.role === 'assistant' && msg.tool_calls) {
+      console.log(`  [${index}] ${msg.role}: ${msg.tool_calls.length} tool_calls`);
+      msg.tool_calls.forEach((tc, tcIndex) => {
+        console.log(`    [${tcIndex}] ${tc.id}: ${tc.function.name}`);
+      });
+    } else {
+      console.log(`  [${index}] ${msg.role}: ${msg.content ? msg.content.substring(0, 50) + '...' : 'sem conteúdo'}`);
+    }
+  });
+  
+  // Log JSON completo para debug
+  console.log(`[ToolCall] 🔍 JSON das mensagens que serão enviadas:`);
+  console.log(JSON.stringify(newMessages, null, 2));
+  
+  // CRÍTICO: Sanitizar mensagens antes de enviar para evitar tool_calls órfãs
+  const sanitizedToolMessages = sanitizeMessagesForChat(newMessages);
+  console.log(`[ToolCall] 🧹 Mensagens sanitizadas para tool call: ${newMessages.length} -> ${sanitizedToolMessages.length}`);
+  
+  // Modificar o toolsParam para undefined para permitir resposta livre (sem tool_choice="required")
+  const newResponse = await chatAi(sanitizedToolMessages, undefined);
+  const normalizedNewResponse = normalizeAiResponse(newResponse);
+  newMessages.push(normalizedNewResponse.message);
+
+  if (normalizedNewResponse.message.tool_calls && normalizedNewResponse.message.tool_calls.length > 0) {
+    console.log(`[ToolCall] 🔁 Ferramentas adicionais detectadas, mas ignorando para evitar loop infinito`);
+    console.log(`[ToolCall] ⚠️ A IA quer executar mais ferramentas, mas vamos parar aqui para evitar recursão infinita`);
+    // Não executar recursivamente - apenas retornar as mensagens atuais
+  }
+
+  console.log(`[ToolCall] ✅ Execução de ferramentas e ciclo de IA concluídos. Tempo total: ${Date.now() - toolStartTime}ms`);
+  return newMessages;
 }
