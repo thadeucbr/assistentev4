@@ -276,7 +276,7 @@ async function toolCall(messages, response, tools, from, id, userContent) {
     console.log(`[ToolCall] 📋 Executando ${response.message.tool_calls.length} ferramenta(s) - ${new Date().toISOString()}`);
     
     for (const toolCall of response.message.tool_calls) {
-      const args = toolCall.function.arguments;
+      const args = JSON.parse(toolCall.function.arguments);
       let stepTime = Date.now();
       
       if (toolCall.function.name === 'generate_image') {
