@@ -5,7 +5,13 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "npx nodemon --watch index.js --watch src --ext js,json index.js --verbose"
+    "dev": "npx nodemon --watch index.js --watch src --ext js,json index.js --verbose",
+    "logs": "node src/utils/logViewer.js",
+    "logs:tail": "node src/utils/logViewer.js --tail",
+    "logs:list": "node src/utils/logViewer.js --list",
+    "logs:errors": "node src/utils/logViewer.js --level error",
+    "logs:follow": "node src/utils/logViewer.js --follow",
+    "logs:example": "node src/utils/logExample.js"
   },
   "keywords": [],
   "author": "",
@@ -25,7 +31,8 @@
     "ollama": "^0.5.14",
     "puppeteer": "^24.8.2",
     "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"

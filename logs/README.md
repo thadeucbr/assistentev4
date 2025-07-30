@@ -1,26 +1,71 @@
-# Sistema de Logs de Erro
+# Sistema de Logs Avançado
 
-Este diretório contém os logs de erro gerados automaticamente pelo sistema.
+Este diretório contém os logs estruturados do sistema. O novo sistema de logging oferece:
 
-## Funcionalidade
+## Características
 
-A função `logError()` em `src/utils/logger.js` é responsável por:
+- **IDs únicos por mensagem**: Cada processamento de mensagem gera um ID único (8 caracteres)
+- **Rotação automática**: Mantém apenas os últimos 50 arquivos de log
+- **Logs estruturados**: Formato JSON com timestamp, messageId, tempo decorrido, nível, componente e dados
+- **Console limpo**: Apenas logs críticos aparecem no console
 
-1. **Capturar erros**: Registra automaticamente todos os erros que ocorrem em blocos try-catch
-2. **Gerar arquivos**: Cria arquivos `.txt` com timestamp único para cada erro
-3. **Informações detalhadas**: Inclui:
-   - Timestamp do erro
-   - Contexto onde o erro ocorreu
-   - Mensagem de erro
-   - Stack trace completo
-   - Nome do erro
-   - Causa (se disponível)
+## Tipos de Log
+
+- **error**: Erros críticos que precisam de atenção
+- **warn**: Avisos importantes
+- **info**: Informações gerais do fluxo
+- **debug**: Logs detalhados apenas em arquivo
 
 ## Formato dos Arquivos
 
-Os arquivos seguem o padrão: `error-YYYY-MM-DDTHH-mm-ss-sssZ.txt`
+Os arquivos seguem o padrão: `{messageId}_{nivel}.log`
 
-Exemplo: `error-2025-07-28T15-30-45-123Z.txt`
+Exemplo: `a1b2c3d4_info.log`
+
+## Exemplo de Entrada no Log
+
+```json
+{
+  "timestamp": "2025-07-30T10:30:45.123Z",
+  "messageId": "a1b2c3d4",
+  "elapsedTime": "+1250ms",
+  "level": "INFO",
+  "component": "ProcessMessage",
+  "message": "Processamento da mensagem concluído",
+  "data": {
+    "totalTime": 1250,
+    "userId": "user123"
+  }
+}
+```
+
+## Uso no Código
+
+```javascript
+import logger from '../utils/logger.js';
+
+// No início de cada processamento de mensagem
+const messageId = logger.generateMessageId();
+
+// Logs estruturados
+logger.info('ComponentName', 'Operação realizada com sucesso');
+logger.error('ComponentName', 'Erro ao processar', { error: error.message });
+logger.debug('ComponentName', 'Informação detalhada apenas para arquivo');
+
+// Logs de timing
+logger.timing('ComponentName', 'Operação concluída em 150ms');
+
+// Marcos importantes
+logger.milestone('ComponentName', 'Marco importante atingido');
+```
+
+## Vantagens
+
+1. **Console limpo**: Reduz drasticamente a poluição no terminal
+2. **Rastreabilidade completa**: Cada mensagem pode ser rastreada do início ao fim
+3. **Logs persistentes**: Histórico mantido em arquivos organizados
+4. **Performance**: Logs de timing para análise de performance
+5. **Rotação automática**: Não consome espaço indefinidamente
 
 ## Exemplo de Conteúdo
 

@@ -1,3 +1,7 @@
 /.env
 node_modules
 /vector_store
+
+# Arquivos de log
+*.log
+logs/*.log

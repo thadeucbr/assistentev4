@@ -2,6 +2,7 @@ import LtmService from '../services/LtmService.js';
 import sendImage from '../whatsapp/sendImage.js';
 import { embeddingModel, chatModel } from '../lib/langchain.js'; // Importar embeddingModel e chatModel
 import { normalizeAiResponse } from '../utils/aiResponseUtils.js';
+import logger from '../utils/logger.js'; // Importar o novo sistema de logging
 
 const MAX_STM_MESSAGES = 10; // Número máximo de mensagens na STM
 const SUMMARIZE_THRESHOLD = 7; // Limite para acionar a sumarização (ex: se tiver mais de 7 mensagens, sumariza as mais antigas)
@@ -72,7 +73,7 @@ function sanitizeMessagesForChat(messages) {
         // Todas as tool responses existem, adicionar os IDs como válidos
         toolCallIds.forEach(id => validToolCallIds.add(id));
       } else {
-        console.log(`[Sanitize] ⚠️ Mensagem assistant com tool_calls incompletas será removida: esperado ${toolCallIds.length}, encontrado ${toolResponsesMap.size}`);
+        logger.debug('Sanitize', `Mensagem assistant com tool_calls incompletas será removida: esperado ${toolCallIds.length}, encontrado ${toolResponsesMap.size}`);
       }
     }
   }
@@ -89,24 +90,21 @@ function sanitizeMessagesForChat(messages) {
       if (allToolCallsValid) {
         cleanMessages.push(message);
       } else {
-        console.log(`[Sanitize] 🗑️ Removendo mensagem assistant órfã com tool_calls: ${toolCallIds.join(', ')}`);
-        console.log(`[Sanitize] 🔍 Detalhes da mensagem assistant removida:`, JSON.stringify(message, null, 2));
+        logger.debug('Sanitize', `Removendo mensagem assistant órfã com tool_calls: ${toolCallIds.join(', ')}`, message);
       }
     } else if (message.role === 'assistant') {
       // Para mensagens assistant sem tool_calls, verificar se têm conteúdo válido
       if (message.content && message.content.trim().length > 0) {
         cleanMessages.push(message);
       } else {
-        console.log(`[Sanitize] 🗑️ Removendo mensagem assistant vazia ou sem conteúdo`);
-        console.log(`[Sanitize] 🔍 Detalhes da mensagem assistant vazia:`, JSON.stringify(message, null, 2));
+        logger.debug('Sanitize', 'Removendo mensagem assistant vazia ou sem conteúdo', message);
       }
     } else if (message.role === 'tool') {
       // Só incluir tool messages que correspondem a tool_calls válidos
       if (message.tool_call_id && validToolCallIds.has(message.tool_call_id)) {
         cleanMessages.push(message);
       } else {
-        console.log(`[Sanitize] 🗑️ Removendo mensagem tool órfã: tool_call_id=${message.tool_call_id}`);
-        console.log(`[Sanitize] 🔍 Detalhes da mensagem tool removida:`, JSON.stringify(message, null, 2));
+        logger.debug('Sanitize', `Removendo mensagem tool órfã: tool_call_id=${message.tool_call_id}`, message);
       }
     } else {
       // Para outras mensagens (user, system, assistant sem tool_calls), sempre incluir
@@ -114,7 +112,7 @@ function sanitizeMessagesForChat(messages) {
     }
   }
   
-  console.log(`[Sanitize] 🧹 Mensagens sanitizadas: ${messages.length} -> ${cleanMessages.length}`);
+  logger.debug('Sanitize', `Mensagens sanitizadas: ${messages.length} -> ${cleanMessages.length}`);
   return cleanMessages;
 }
 
@@ -139,8 +137,12 @@ Além disso, você pode usar outras ferramentas para gerar imagens, analisar ima
 };
 
 export default async function processMessage(message) {
+  // Gerar ID único para esta mensagem
+  const messageId = logger.generateMessageId();
+  
   const startTime = Date.now();
-  console.log(`[ProcessMessage] 🚀 Iniciando processamento da mensagem - ${new Date().toISOString()}`);
+  logger.start('ProcessMessage', 'Iniciando processamento da mensagem');
+  
   const { data } = message;
   const isGroup = groups.includes(data?.chatId);
   if (
@@ -150,7 +152,7 @@ export default async function processMessage(message) {
     !isGroup
   ) {
     let stepTime = Date.now();
-    console.log(`[ProcessMessage] ✅ Mensagem autorizada para processamento - ${new Date().toISOString()} (+${Date.now() - startTime}ms)`);
+    logger.milestone('ProcessMessage', 'Mensagem autorizada para processamento');
     
     // Feedback imediato: simular digitação no início para mostrar que o bot está "vivo"
     simulateTyping(data.from, true); // Não aguardar - executar em background
@@ -161,36 +163,36 @@ export default async function processMessage(message) {
     const userId = data.from.replace('@c.us', '');
     
     stepTime = Date.now();
-    console.log(`[ProcessMessage] 📖 Carregando contexto do usuário... - ${new Date().toISOString()}`);
+    logger.debug('ProcessMessage', 'Carregando contexto do usuário...');
     let { messages } = await getUserContext(userId); // This 'messages' is our STM
-    console.log(`[ProcessMessage] ✅ Contexto carregado (+${Date.now() - stepTime}ms)`);
+    logger.timing('ProcessMessage', 'Contexto carregado');
     
     // CRÍTICO: Sanitizar contexto histórico para remover mensagens órfãs corrompidas
     stepTime = Date.now();
-    console.log(`[ProcessMessage] 🧹 Sanitizando contexto histórico... - ${new Date().toISOString()}`);
+    logger.debug('ProcessMessage', 'Sanitizando contexto histórico...');
     messages = sanitizeMessagesForChat(messages);
-    console.log(`[ProcessMessage] ✅ Contexto histórico sanitizado (+${Date.now() - stepTime}ms)`);
+    logger.timing('ProcessMessage', 'Contexto histórico sanitizado');
     
     stepTime = Date.now();
-    console.log(`[ProcessMessage] 👤 Carregando perfil do usuário... - ${new Date().toISOString()}`);
+    logger.debug('ProcessMessage', 'Carregando perfil do usuário...');
     const userProfile = await getUserProfile(userId);
-    console.log(`[ProcessMessage] ✅ Perfil carregado (+${Date.now() - stepTime}ms)`);
+    logger.timing('ProcessMessage', 'Perfil carregado');
     
     stepTime = Date.now();
-    console.log(`[ProcessMessage] 🧠 Buscando contexto relevante na LTM... - ${new Date().toISOString()}`);
+    logger.debug('ProcessMessage', 'Buscando contexto relevante na LTM...');
     const ltmContext = await LtmService.getRelevantContext(userId, userContent);
-    console.log(`[ProcessMessage] ✅ Contexto LTM obtido (+${Date.now() - stepTime}ms)`);
+    logger.timing('ProcessMessage', 'Contexto LTM obtido');
 
     // --- STM Management: Reranking and Summarization ---
     stepTime = Date.now();
-    console.log(`[ProcessMessage] 🧩 Gerenciando memória de curto prazo (STM)... - ${new Date().toISOString()}`);
+    logger.debug('ProcessMessage', 'Gerenciando memória de curto prazo (STM)...');
     let currentSTM = [...messages]; // Create a copy to work with
 
     const hotMessages = currentSTM.slice(-SUMMARIZE_THRESHOLD);
     const warmMessages = currentSTM.slice(0, currentSTM.length - SUMMARIZE_THRESHOLD);
 
     if (warmMessages.length > 0 && currentSTM.length >= MAX_STM_MESSAGES) {
-      console.log(`[ProcessMessage] 🔄 Aplicando reranking e sumarização da STM... - ${new Date().toISOString()}`);
+      logger.info('ProcessMessage', 'Aplicando reranking e sumarização da STM...');
       
       const stmTypingPromise = simulateTyping(data.from, true);
       
@@ -222,14 +224,14 @@ export default async function processMessage(message) {
       const messagesToSummarize = warmMessages.filter(m => !keptMessageContents.has(m.content));
 
       if (messagesToSummarize.length > 0) {
-        console.log(`[ProcessMessage] 📚 Sumarizando mensagens antigas para LTM... - ${new Date().toISOString()}`);
+        logger.debug('ProcessMessage', 'Sumarizando mensagens antigas para LTM...');
         const summaryContent = messagesToSummarize.map(m => m.content).join('\n');
         const summaryResponse = await chatModel.invoke([
           { role: 'system', content: 'Resuma o seguinte trecho de conversa de forma concisa, focando nos fatos e informações importantes.' },
           { role: 'user', content: summaryContent }
         ]);
         LtmService.summarizeAndStore(userId, summaryResponse.content)
-            .catch(err => console.error(`[ProcessMessage] Erro ao sumarizar para LTM em background: ${err}`));
+            .catch(err => logger.error('ProcessMessage', `Erro ao sumarizar para LTM em background: ${err}`));
       }
 
       messages = [...hotMessages, ...keptWarmMessages.map(m => ({ role: m.role, content: m.content }))];
@@ -237,14 +239,14 @@ export default async function processMessage(message) {
       await stmTypingPromise;
 
     } else if (currentSTM.length > MAX_STM_MESSAGES) {
-      console.log(`[ProcessMessage] ✂️ Truncando STM por janela deslizante... - ${new Date().toISOString()}`);
+      logger.debug('ProcessMessage', 'Truncando STM por janela deslizante...');
       messages = currentSTM.slice(-MAX_STM_MESSAGES);
     }
-    console.log(`[ProcessMessage] ✅ Gerenciamento STM concluído (+${Date.now() - stepTime}ms)`);
+    logger.timing('ProcessMessage', 'Gerenciamento STM concluído');
 
     // Constrói o prompt dinâmico
     stepTime = Date.now();
-    console.log(`[ProcessMessage] 🛠️ Construindo prompt dinâmico... - ${new Date().toISOString()}`);
+    logger.debug('ProcessMessage', 'Construindo prompt dinâmico...');
     const dynamicPrompt = {
       role: 'system',
       content: `Você é um assistente que pode responder perguntas, gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias como Mega-Sena, Quina e Lotofácil.\n\nIMPORTANTE: Ao usar ferramentas (functions/tools), siga exatamente as instruções de uso de cada função, conforme descrito no campo 'description' de cada uma.\n\nSe não tiver certeza de como usar uma função, explique o motivo e peça mais informações. Nunca ignore as instruções do campo 'description' das funções.\n\nCRÍTICO: Todas as respostas diretas ao usuário devem ser enviadas usando a ferramenta 'send_message'. Não responda diretamente.`
@@ -269,17 +271,17 @@ export default async function processMessage(message) {
     if (ltmContext) {
       dynamicPrompt.content += `\n\n--- Relevant Previous Conversations ---\n${ltmContext}`;
     }
-    console.log(`[ProcessMessage] ✅ Prompt dinâmico construído (+${Date.now() - stepTime}ms)`);
+    logger.timing('ProcessMessage', 'Prompt dinâmico construído');
 
     // --- Sequential AI Analysis ---
     stepTime = Date.now();
-    console.log(`[ProcessMessage] 🚀 Iniciando análises de IA sequencialmente... - ${new Date().toISOString()}`);
+    logger.info('ProcessMessage', 'Iniciando análises de IA sequencialmente...');
     simulateTyping(data.from, true);
 
-    console.log(`[ProcessMessage] 📊 Analisando sentimento... - ${new Date().toISOString()}`);
+    logger.debug('ProcessMessage', 'Analisando sentimento...');
     const currentSentiment = await analyzeSentiment(userContent);
     
-    console.log(`[ProcessMessage] 🎨 Inferindo estilo de interação... - ${new Date().toISOString()}`);
+    logger.debug('ProcessMessage', 'Inferindo estilo de interação...');
     const inferredStyle = await inferInteractionStyle(userContent);
 
     const chatMessages = [dynamicPrompt, ...messages, { role: 'user', content: userContent }];
@@ -287,27 +289,27 @@ export default async function processMessage(message) {
     // CRÍTICO: Sanitizar mensagens antes de enviar para evitar tool_calls órfãs
     const sanitizedChatMessages = sanitizeMessagesForChat(chatMessages);
     
-    console.log(`[ProcessMessage] 💬 Gerando resposta principal... - ${new Date().toISOString()}`);
+    logger.debug('ProcessMessage', 'Gerando resposta principal...');
     let response = await chatAi(sanitizedChatMessages);
 
-    console.log(`[ProcessMessage] ✅ Análises de IA concluídas (+${Date.now() - stepTime}ms)`);
+    logger.timing('ProcessMessage', 'Análises de IA concluídas');
 
     // Update user profile with the latest sentiment and style (quick, synchronous update)
     stepTime = Date.now();
-    console.log(`[ProcessMessage] 📝 Atualizando perfil do usuário (sentimento/estilo)... - ${new Date().toISOString()}`);
+    logger.debug('ProcessMessage', 'Atualizando perfil do usuário (sentimento/estilo)...');
     const updatedProfile = {
       ...userProfile,
       sentiment: { average: currentSentiment, trend: 'stable' },
       interaction_style: inferredStyle
     };
     await updateUserProfile(userId, updatedProfile);
-    console.log(`[ProcessMessage] ✅ Perfil (sentimento/estilo) atualizado (+${Date.now() - stepTime}ms)`);
+    logger.timing('ProcessMessage', 'Perfil (sentimento/estilo) atualizado');
 
     // --- Process AI Response ---
     stepTime = Date.now();
-    console.log(`[ProcessMessage] 🔧 Normalizando resposta da IA... - ${new Date().toISOString()}`);
+    logger.debug('ProcessMessage', 'Normalizando resposta da IA...');
     response = normalizeAiResponse(response);
-    console.log(`[ProcessMessage] ✅ Resposta normalizada (+${Date.now() - stepTime}ms)`);
+    logger.timing('ProcessMessage', 'Resposta normalizada');
 
     messages.push({ role: 'user', content: userContent });
     messages.push(response.message);
@@ -319,9 +321,9 @@ export default async function processMessage(message) {
     while (toolCycleCount < MAX_TOOL_CYCLES) {
       if ((lastResponse.tool_calls && lastResponse.tool_calls.length > 0) || lastResponse.function_call) {
         stepTime = Date.now();
-        console.log(`[ProcessMessage] 🛠️ Executando ferramentas... - ${new Date().toISOString()}`);
+        logger.debug('ProcessMessage', 'Executando ferramentas...');
         messages = await toolCall(messages, { message: lastResponse }, tools, data.from, data.id, userContent);
-        console.log(`[ProcessMessage] ✅ Ferramentas executadas (+${Date.now() - stepTime}ms)`);
+        logger.timing('ProcessMessage', 'Ferramentas executadas');
         // Buscar a última mensagem assistant gerada
         const lastAssistantMsg = messages.filter(m => m.role === 'assistant').slice(-1)[0];
         if (lastAssistantMsg) {
@@ -331,7 +333,7 @@ export default async function processMessage(message) {
         }
         // Se a última resposta assistant contém send_message, encerra ciclo
         if (lastResponse.tool_calls && lastResponse.tool_calls.some(tc => tc.function.name === 'send_message')) {
-          console.log(`[ProcessMessage] ✅ Send_message detectado na última resposta - encerrando ciclo de ferramentas`);
+          logger.debug('ProcessMessage', 'Send_message detectado na última resposta - encerrando ciclo de ferramentas');
           break;
         }
       } else if (lastResponse.tool_calls && lastResponse.tool_calls.length > 0) {
@@ -343,7 +345,7 @@ export default async function processMessage(message) {
             content: 'Erro: ferramenta não encontrada ou falhou ao executar.',
           };
           messages.push(fallbackResponse);
-          console.log(`[ProcessMessage] 🆘 Fallback: Adicionada resposta de erro para tool_call_id=${toolCall.id}`);
+          logger.debug('ProcessMessage', `Fallback: Adicionada resposta de erro para tool_call_id=${toolCall.id}`);
         }
         break;
       } else {
@@ -356,7 +358,7 @@ export default async function processMessage(message) {
     // Fallback final: se não houve resposta send_message, peça para a LLM gerar uma mensagem amigável de falha conforme o contexto
     const hasSendMessage = messages.some(m => m.role === 'assistant' && m.tool_calls && m.tool_calls.some(tc => tc.function.name === 'send_message'));
     if (!hasSendMessage) {
-      console.log('[ProcessMessage] 🆘 Fallback final: Solicitando à LLM uma mensagem amigável de erro.');
+      logger.warn('ProcessMessage', 'Fallback final: Solicitando à LLM uma mensagem amigável de erro.');
       // Sanitize o histórico antes de enviar para o fallbackPrompt
       const sanitizedFallbackHistory = sanitizeMessagesForChat(messages.slice(-MAX_STM_MESSAGES));
       const fallbackPrompt = [
@@ -396,34 +398,34 @@ export default async function processMessage(message) {
         content: `Mensagem enviada ao usuário: "${fallbackContent}"`
       };
       messages.push(fallbackTool);
-      console.log('[ProcessMessage] 🆘 Fallback final: Mensagem de erro amigável enviada ao usuário.');
+      logger.info('ProcessMessage', 'Fallback final: Mensagem de erro amigável enviada ao usuário.');
     }
     
     // --- Final Asynchronous Updates ---
     stepTime = Date.now();
-    console.log(`[ProcessMessage] 💾 Atualizando contexto e iniciando atualizações em background... - ${new Date().toISOString()}`);
+    logger.debug('ProcessMessage', 'Atualizando contexto e iniciando atualizações em background...');
     
     await updateUserContext(userId, { messages });
 
     LtmService.summarizeAndStore(userId, messages.map((m) => m.content).join('\n'))
-        .catch(err => console.error(`[ProcessMessage] Erro ao armazenar na LTM em background: ${err}`));
+        .catch(err => logger.error('ProcessMessage', `Erro ao armazenar na LTM em background: ${err}`));
 
     updateUserProfileSummary(userId, messages)
-      .catch(err => console.error(`[ProcessMessage] Erro ao atualizar resumo do perfil em background: ${err}`));
+      .catch(err => logger.error('ProcessMessage', `Erro ao atualizar resumo do perfil em background: ${err}`));
       
-    console.log(`[ProcessMessage] ✅ Atualizações síncronas concluídas e assíncronas iniciadas (+${Date.now() - stepTime}ms)`);
+    logger.timing('ProcessMessage', 'Atualizações síncronas concluídas e assíncronas iniciadas');
     
-    console.log(`[ProcessMessage] ✅ Processamento da mensagem concluído - TEMPO TOTAL: ${Date.now() - startTime}ms - ${new Date().toISOString()}`);
+    logger.end('ProcessMessage', `Processamento da mensagem concluído - TEMPO TOTAL: ${Date.now() - startTime}ms`);
   }
 }
 
 async function toolCall(messages, response, tools, from, id, userContent) {
   const toolStartTime = Date.now();
-  console.log(`[ToolCall] 🔧 Iniciando execução de ferramentas...`);
+  logger.debug('ToolCall', 'Iniciando execução de ferramentas...');
   let newMessages = [...messages];
 
   if (response.message.function_call) {
-    console.log(`[ToolCall] 🔄 Convertendo function_call legado para tool_calls...`);
+    logger.debug('ToolCall', 'Convertendo function_call legado para tool_calls...');
     response.message.tool_calls = [
       {
         id: `call_legacy_${Date.now()}`,
@@ -437,11 +439,11 @@ async function toolCall(messages, response, tools, from, id, userContent) {
   }
 
   if (!response.message.tool_calls || response.message.tool_calls.length === 0) {
-    console.log(`[ToolCall] ⚠️ Nenhuma ferramenta para executar.`);
+    logger.warn('ToolCall', 'Nenhuma ferramenta para executar.');
     return messages;
   }
 
-  console.log(`[ToolCall] 📋 Executando ${response.message.tool_calls.length} ferramenta(s) sequencialmente...`);
+  logger.debug('ToolCall', `Executando ${response.message.tool_calls.length} ferramenta(s) sequencialmente...`);
 
   // Coletar todas as respostas das ferramentas primeiro
   const toolResponses = [];
@@ -451,7 +453,7 @@ async function toolCall(messages, response, tools, from, id, userContent) {
     let toolResultContent = '';
     let actualToolName = toolName;
 
-    console.log(`[ToolCall] 🔧 Processando tool_call: ${toolCall.id} - ${toolName}`);
+    logger.debug('ToolCall', `Processando tool_call: ${toolCall.id} - ${toolName}`);
 
     try {
       const args = JSON.parse(toolCall.function.arguments);
@@ -459,7 +461,7 @@ async function toolCall(messages, response, tools, from, id, userContent) {
       // Normalizar nomes de ferramentas com erros de digitação
       if (toolName === 'ssend_message') {
         actualToolName = 'send_message';
-        console.log(`[ToolCall] ⚠️ Corrigindo nome da ferramenta de '${toolName}' para '${actualToolName}'`);
+        logger.warn('ToolCall', `Corrigindo nome da ferramenta de '${toolName}' para '${actualToolName}'`);
       }
 
       switch (actualToolName) {
@@ -505,12 +507,12 @@ async function toolCall(messages, response, tools, from, id, userContent) {
           break;
 
         default:
-          console.warn(`[ToolCall] Ferramenta desconhecida encontrada: ${toolName}`);
+          logger.warn('ToolCall', `Ferramenta desconhecida encontrada: ${toolName}`);
           toolResultContent = `Ferramenta desconhecida: ${toolName}`;
           break;
       }
     } catch (error) {
-      console.error(`[ToolCall] Erro ao executar ou analisar argumentos para a ferramenta ${toolName}:`, error);
+      logger.error('ToolCall', `Erro ao executar ou analisar argumentos para a ferramenta ${toolName}:`, error);
       toolResultContent = `Erro interno ao processar a ferramenta ${toolName}.`;
     }
 
@@ -524,12 +526,12 @@ async function toolCall(messages, response, tools, from, id, userContent) {
     
     // CRÍTICO: Garantir que já temos o tool_call_id correto para evitar problemas no sanitizeMessages
     if (!toolResponse.tool_call_id) {
-      console.error(`[ToolCall] ⚠️ ERRO: tool_call_id ausente para ${toolCall.id}`);
+      logger.error('ToolCall', `ERRO: tool_call_id ausente para ${toolCall.id}`);
       toolResponse.tool_call_id = toolCall.id;
     }
     
     toolResponses.push(toolResponse);
-    console.log(`[ToolCall] ✅ Resposta coletada para ${toolCall.id}: ${toolName} (original) -> ${actualToolName} (executado)`);
+    logger.debug('ToolCall', `Resposta coletada para ${toolCall.id}: ${toolName} (original) -> ${actualToolName} (executado)`);
   }
 
   // Adicionar todas as respostas das ferramentas ao array de mensagens
@@ -539,12 +541,12 @@ async function toolCall(messages, response, tools, from, id, userContent) {
   const toolCallIds = response.message.tool_calls.map(tc => tc.id);
   const toolResponseIds = toolResponses.map(tr => tr.tool_call_id);
   
-  console.log(`[ToolCall] 📊 Debug - Tool call IDs esperados: ${toolCallIds.join(', ')}`);
-  console.log(`[ToolCall] 📊 Debug - Tool response IDs encontrados: ${toolResponseIds.join(', ')}`);
+  logger.debug('ToolCall', `Debug - Tool call IDs esperados: ${toolCallIds.join(', ')}`);
+  logger.debug('ToolCall', `Debug - Tool response IDs encontrados: ${toolResponseIds.join(', ')}`);
   
   const missingResponses = toolCallIds.filter(id => !toolResponseIds.includes(id));
   if (missingResponses.length > 0) {
-    console.error(`[ToolCall] ⚠️ ERRO CRÍTICO: Tool calls sem resposta detectadas: ${missingResponses.join(', ')}`);
+    logger.error('ToolCall', `ERRO CRÍTICO: Tool calls sem resposta detectadas: ${missingResponses.join(', ')}`);
     // Isso não deveria acontecer mais, mas vamos adicionar como fallback
     for (const missingId of missingResponses) {
       const fallbackResponse = {
@@ -554,35 +556,34 @@ async function toolCall(messages, response, tools, from, id, userContent) {
       };
       toolResponses.push(fallbackResponse);
       newMessages.push(fallbackResponse);
-      console.log(`[ToolCall] 🆘 Fallback: Adicionada resposta de erro para ${missingId}`);
+      logger.critical('ToolCall', `Fallback: Adicionada resposta de erro para ${missingId}`);
     }
   }
 
-  console.log(`[ToolCall] 🔄 Enviando todos os resultados das ferramentas para a IA...`);
-  console.log(`[ToolCall] 📊 Total de mensagens a enviar: ${newMessages.length}`);
+  logger.debug('ToolCall', 'Enviando todos os resultados das ferramentas para a IA...');
+  logger.debug('ToolCall', `Total de mensagens a enviar: ${newMessages.length}`);
   
   // Log detalhado das mensagens para debug
-  console.log(`[ToolCall] 📋 Estrutura das mensagens a enviar:`);
+  logger.debug('ToolCall', 'Estrutura das mensagens a enviar:');
   newMessages.forEach((msg, index) => {
     if (msg.role === 'tool') {
-      console.log(`  [${index}] ${msg.role}: tool_call_id=${msg.tool_call_id}, name=${msg.name}`);
+      logger.debug('ToolCall', `  [${index}] ${msg.role}: tool_call_id=${msg.tool_call_id}, name=${msg.name}`);
     } else if (msg.role === 'assistant' && msg.tool_calls) {
-      console.log(`  [${index}] ${msg.role}: ${msg.tool_calls.length} tool_calls`);
+      logger.debug('ToolCall', `  [${index}] ${msg.role}: ${msg.tool_calls.length} tool_calls`);
       msg.tool_calls.forEach((tc, tcIndex) => {
-        console.log(`    [${tcIndex}] ${tc.id}: ${tc.function.name}`);
+        logger.debug('ToolCall', `    [${tcIndex}] ${tc.id}: ${tc.function.name}`);
       });
     } else {
-      console.log(`  [${index}] ${msg.role}: ${msg.content ? msg.content.substring(0, 50) + '...' : 'sem conteúdo'}`);
+      logger.debug('ToolCall', `  [${index}] ${msg.role}: ${msg.content ? msg.content.substring(0, 50) + '...' : 'sem conteúdo'}`);
     }
   });
   
   // Log JSON completo para debug
-  console.log(`[ToolCall] 🔍 JSON das mensagens que serão enviadas:`);
-  console.log(JSON.stringify(newMessages, null, 2));
+  logger.debug('ToolCall', 'JSON das mensagens que serão enviadas:', newMessages);
   
   // CRÍTICO: Sanitizar mensagens antes de enviar para evitar tool_calls órfãs
   const sanitizedToolMessages = sanitizeMessagesForChat(newMessages);
-  console.log(`[ToolCall] 🧹 Mensagens sanitizadas para tool call: ${newMessages.length} -> ${sanitizedToolMessages.length}`);
+  logger.debug('ToolCall', `Mensagens sanitizadas para tool call: ${newMessages.length} -> ${sanitizedToolMessages.length}`);
   
   // Verificar se já executamos send_message - se sim, não chamar a IA novamente
   const alreadyExecutedSendMessage = toolResponses.some(tr => 
@@ -590,8 +591,8 @@ async function toolCall(messages, response, tools, from, id, userContent) {
   );
   
   if (alreadyExecutedSendMessage) {
-    console.log(`[ToolCall] ✅ Send_message já executado - parando aqui para evitar duplicatas`);
-    console.log(`[ToolCall] ✅ Execução de ferramentas concluída. Tempo total: ${Date.now() - toolStartTime}ms`);
+    logger.info('ToolCall', 'Send_message já executado - parando aqui para evitar duplicatas');
+    logger.timing('ToolCall', `Execução de ferramentas concluída. Tempo total: ${Date.now() - toolStartTime}ms`);
     return newMessages;
   }
   
@@ -604,7 +605,7 @@ async function toolCall(messages, response, tools, from, id, userContent) {
     // Verificar se contém send_message - se sim, executar; caso contrário, ignorar para evitar loop
     const hasSendMessage = normalizedNewResponse.message.tool_calls.some(tc => tc.function.name === 'send_message');
     if (hasSendMessage) {
-      console.log(`[ToolCall] � Executando send_message da resposta da IA...`);
+      logger.debug('ToolCall', 'Executando send_message da resposta da IA...');
       // Executar apenas as ferramentas send_message
       for (const toolCall of normalizedNewResponse.message.tool_calls) {
         if (toolCall.function.name === 'send_message') {
@@ -617,9 +618,9 @@ async function toolCall(messages, response, tools, from, id, userContent) {
               content: `Mensagem enviada ao usuário: "${args.content}"`
             };
             newMessages.push(toolResponse);
-            console.log(`[ToolCall] ✅ Send_message executado: ${args.content}`);
+            logger.info('ToolCall', `Send_message executado: ${args.content}`);
           } catch (error) {
-            console.error(`[ToolCall] Erro ao executar send_message:`, error);
+            logger.error('ToolCall', 'Erro ao executar send_message:', error);
             const toolResponse = {
               role: 'tool',
               tool_call_id: toolCall.id,
@@ -638,8 +639,8 @@ async function toolCall(messages, response, tools, from, id, userContent) {
         }
       }
     } else {
-      console.log(`[ToolCall] �🔁 Ferramentas adicionais detectadas, mas ignorando para evitar loop infinito`);
-      console.log(`[ToolCall] ⚠️ A IA quer executar mais ferramentas, mas vamos parar aqui para evitar recursão infinita`);
+      logger.debug('ToolCall', 'Ferramentas adicionais detectadas, mas ignorando para evitar loop infinito');
+      logger.warn('ToolCall', 'A IA quer executar mais ferramentas, mas vamos parar aqui para evitar recursão infinita');
       // Adicionar respostas tool para evitar tool_calls órfãs
       for (const toolCall of normalizedNewResponse.message.tool_calls) {
         const toolResponse = {
@@ -652,6 +653,6 @@ async function toolCall(messages, response, tools, from, id, userContent) {
     }
   }
 
-  console.log(`[ToolCall] ✅ Execução de ferramentas e ciclo de IA concluídos. Tempo total: ${Date.now() - toolStartTime}ms`);
+  logger.timing('ToolCall', `Execução de ferramentas e ciclo de IA concluídos. Tempo total: ${Date.now() - toolStartTime}ms`);
   return newMessages;
 }
