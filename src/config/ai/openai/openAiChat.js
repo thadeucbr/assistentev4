@@ -61,18 +61,32 @@ function sanitizeMessages(messages) {
         continue;
       }
 
-      // The 'tool' message needs a 'tool_call_id'. We find the corresponding call
-      // in the previous assistant message by matching the function name.
-      const matchingToolCall = prevMessage.tool_calls.find(
-        (tc) => tc.function && tc.function.name === message.name
-      );
-
-      if (matchingToolCall && matchingToolCall.id) {
-        message.tool_call_id = matchingToolCall.id;
-        delete message.name; // 'name' is deprecated for the 'tool' role.
+      // The 'tool' message needs a 'tool_call_id'. 
+      // First check if it already has a valid tool_call_id
+      if (message.tool_call_id) {
+        // Verify this tool_call_id exists in the previous assistant message
+        const matchingToolCall = prevMessage.tool_calls.find(
+          (tc) => tc.id === message.tool_call_id
+        );
+        if (matchingToolCall) {
+          delete message.name; // 'name' is deprecated for the 'tool' role.
+        } else {
+          // tool_call_id doesn't match any in the previous message, discard
+          continue;
+        }
       } else {
-        // This tool message doesn't correspond to any tool call, so we discard it.
-        continue;
+        // Fallback: try to match by function name if tool_call_id is missing
+        const matchingToolCall = prevMessage.tool_calls.find(
+          (tc) => tc.function && tc.function.name === message.name
+        );
+
+        if (matchingToolCall && matchingToolCall.id) {
+          message.tool_call_id = matchingToolCall.id;
+          delete message.name; // 'name' is deprecated for the 'tool' role.
+        } else {
+          // This tool message doesn't correspond to any tool call, so we discard it.
+          continue;
+        }
       }
     }
     
