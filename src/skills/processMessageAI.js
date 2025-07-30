@@ -351,6 +351,50 @@ export default async function processMessage(message) {
       }
       toolCycleCount++;
     }
+
+    // Fallback final: se não houve resposta send_message, peça para a LLM gerar uma mensagem amigável de falha conforme o contexto
+    const hasSendMessage = messages.some(m => m.role === 'assistant' && m.tool_calls && m.tool_calls.some(tc => tc.function.name === 'send_message'));
+    if (!hasSendMessage) {
+      console.log('[ProcessMessage] 🆘 Fallback final: Solicitando à LLM uma mensagem amigável de erro.');
+      const fallbackPrompt = [
+        {
+          role: 'system',
+          content: 'Você falhou em obter uma resposta útil usando ferramentas. Gere uma mensagem amigável para o usuário explicando que não foi possível atender ao pedido, sem citar ferramentas ou detalhes técnicos. Seja educado e sugira alternativas se possível.'
+        },
+        ...messages.slice(-MAX_STM_MESSAGES)
+      ];
+      let fallbackResponse;
+      try {
+        fallbackResponse = await chatAi(fallbackPrompt);
+      } catch (err) {
+        fallbackResponse = { message: { content: 'Desculpe, não consegui atender ao seu pedido neste momento.' } };
+      }
+      const fallbackContent = fallbackResponse?.message?.content || 'Desculpe, não consegui atender ao seu pedido neste momento.';
+      const fallbackAssistant = {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          {
+            id: `call_fallback_${Date.now()}`,
+            type: 'function',
+            function: {
+              name: 'send_message',
+              arguments: JSON.stringify({ content: fallbackContent })
+            }
+          }
+        ],
+        refusal: null,
+        annotations: []
+      };
+      messages.push(fallbackAssistant);
+      const fallbackTool = {
+        role: 'tool',
+        tool_call_id: fallbackAssistant.tool_calls[0].id,
+        content: `Mensagem enviada ao usuário: "${fallbackContent}"`
+      };
+      messages.push(fallbackTool);
+      console.log('[ProcessMessage] 🆘 Fallback final: Mensagem de erro amigável enviada ao usuário.');
+    }
     
     // --- Final Asynchronous Updates ---
     stepTime = Date.now();
