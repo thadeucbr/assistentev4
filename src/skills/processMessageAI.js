@@ -279,7 +279,9 @@ async function toolCall(messages, response, tools, from, id, userContent) {
 
   console.log(`[ToolCall] 📋 Executando ${response.message.tool_calls.length} ferramenta(s) sequencialmente...`);
 
-  // Primeiro, vamos adicionar todas as respostas tool para garantir correspondência 1:1
+  // Coletar todas as respostas das ferramentas primeiro
+  const toolResponses = [];
+  
   for (const toolCall of response.message.tool_calls) {
     const toolName = toolCall.function.name;
     let toolResultContent = '';
@@ -348,7 +350,7 @@ async function toolCall(messages, response, tools, from, id, userContent) {
       toolResultContent = `Erro interno ao processar a ferramenta ${toolName}.`;
     }
 
-    // Garantir que sempre seja adicionada uma resposta tool para cada tool_call
+    // Coletar resposta da ferramenta
     const toolResponse = {
       role: 'tool',
       tool_call_id: toolCall.id,
@@ -356,15 +358,16 @@ async function toolCall(messages, response, tools, from, id, userContent) {
       content: toolResultContent,
     };
     
-    newMessages.push(toolResponse);
-    console.log(`[ToolCall] ✅ Resposta adicionada para ${toolCall.id}: ${actualToolName}`);
+    toolResponses.push(toolResponse);
+    console.log(`[ToolCall] ✅ Resposta coletada para ${toolCall.id}: ${actualToolName}`);
   }
+
+  // Adicionar todas as respostas das ferramentas ao array de mensagens
+  newMessages.push(...toolResponses);
 
   // Validação final para debug
   const toolCallIds = response.message.tool_calls.map(tc => tc.id);
-  const toolResponseIds = newMessages
-    .filter(msg => msg.role === 'tool')
-    .map(msg => msg.tool_call_id);
+  const toolResponseIds = toolResponses.map(tr => tr.tool_call_id);
   
   console.log(`[ToolCall] 📊 Debug - Tool call IDs esperados: ${toolCallIds.join(', ')}`);
   console.log(`[ToolCall] 📊 Debug - Tool response IDs encontrados: ${toolResponseIds.join(', ')}`);
@@ -374,18 +377,31 @@ async function toolCall(messages, response, tools, from, id, userContent) {
     console.error(`[ToolCall] ⚠️ ERRO CRÍTICO: Tool calls sem resposta detectadas: ${missingResponses.join(', ')}`);
     // Isso não deveria acontecer mais, mas vamos adicionar como fallback
     for (const missingId of missingResponses) {
-      newMessages.push({
+      const fallbackResponse = {
         role: 'tool',
         tool_call_id: missingId,
         name: 'unknown',
         content: 'Erro: ferramenta não encontrada ou falhou ao executar.',
-      });
+      };
+      toolResponses.push(fallbackResponse);
+      newMessages.push(fallbackResponse);
       console.log(`[ToolCall] 🆘 Fallback: Adicionada resposta de erro para ${missingId}`);
     }
   }
 
   console.log(`[ToolCall] 🔄 Enviando todos os resultados das ferramentas para a IA...`);
   console.log(`[ToolCall] 📊 Total de mensagens a enviar: ${newMessages.length}`);
+  
+  // Log detalhado das mensagens para debug
+  console.log(`[ToolCall] 📋 Estrutura das mensagens a enviar:`);
+  newMessages.forEach((msg, index) => {
+    if (msg.role === 'tool') {
+      console.log(`  [${index}] ${msg.role}: tool_call_id=${msg.tool_call_id}, name=${msg.name}`);
+    } else {
+      console.log(`  [${index}] ${msg.role}: ${msg.content ? msg.content.substring(0, 50) + '...' : 'tool_calls presente'}`);
+    }
+  });
+  
   const newResponse = await chatAi(newMessages, tools);
   const normalizedNewResponse = normalizeAiResponse(newResponse);
   newMessages.push(normalizedNewResponse.message);
