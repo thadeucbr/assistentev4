@@ -356,12 +356,14 @@ export default async function processMessage(message) {
     const hasSendMessage = messages.some(m => m.role === 'assistant' && m.tool_calls && m.tool_calls.some(tc => tc.function.name === 'send_message'));
     if (!hasSendMessage) {
       console.log('[ProcessMessage] 🆘 Fallback final: Solicitando à LLM uma mensagem amigável de erro.');
+      // Sanitize o histórico antes de enviar para o fallbackPrompt
+      const sanitizedFallbackHistory = sanitizeMessagesForChat(messages.slice(-MAX_STM_MESSAGES));
       const fallbackPrompt = [
         {
           role: 'system',
           content: 'Você falhou em obter uma resposta útil usando ferramentas. Gere uma mensagem amigável para o usuário explicando que não foi possível atender ao pedido, sem citar ferramentas ou detalhes técnicos. Seja educado e sugira alternativas se possível.'
         },
-        ...messages.slice(-MAX_STM_MESSAGES)
+        ...sanitizedFallbackHistory
       ];
       let fallbackResponse;
       try {
