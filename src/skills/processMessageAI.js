@@ -110,6 +110,7 @@ const SYSTEM_PROMPT = {
 1. **SEMPRE USE 'send_message':** Para qualquer texto que você queira enviar ao usuário, você DEVE OBRIGATORIAMENTE usar a função 'send_message'. NUNCA responda diretamente com texto no campo 'content' da sua resposta principal.
 2. **Múltiplas Mensagens:** Você pode chamar a função 'send_message' várias vezes em sequência para quebrar suas respostas em mensagens menores e mais dinâmicas, se apropriado.
 3. **NÃO RESPONDA DIRETAMENTE:** Se você tiver uma resposta para o usuário, mas não usar 'send_message', sua resposta NÃO SERÁ ENTREGUE. Isso é um erro crítico.
+4. **EXECUÇÃO SEQUENCIAL:** Quando o usuário pedir múltiplas ações (ex: "gere uma imagem, depois envie uma mensagem, depois gere outra imagem"), execute UMA ferramenta por vez. Após executar uma ferramenta, você receberá sua resposta e poderá continuar com a próxima ação. Isso cria um fluxo mais natural e controlado.
 
 Para buscar informações na web, siga este processo em duas etapas:
 1. **Descubra:** Use a função 'web_search' com uma query de busca (ex: "melhores restaurantes em São Paulo") para encontrar URLs relevantes.
@@ -315,8 +316,16 @@ export default async function processMessage(message) {
   }
 }
 
-async function toolCall(messages, response, tools, from, id, userContent) {
-  const toolStartTime = Date.now();
+async function toolCall(messages, response, tools, from, id, userContent, recursiveState = null) {
+  // Se não há estado recursivo, criar um novo
+  if (!recursiveState) {
+    recursiveState = {
+      startTime: Date.now(),
+      depth: 0
+    };
+  }
+  
+  const toolStartTime = recursiveState.startTime;
   console.log(`[ToolCall] 🔧 Iniciando execução de ferramentas...`);
   let newMessages = [...messages];
 
@@ -339,12 +348,22 @@ async function toolCall(messages, response, tools, from, id, userContent) {
     return messages;
   }
 
-  console.log(`[ToolCall] 📋 Executando ${response.message.tool_calls.length} ferramenta(s) sequencialmente...`);
+  console.log(`[ToolCall] 📋 Executando ${response.message.tool_calls.length} ferramenta(s). Processando UMA por vez para manter sequência natural...`);
+
+  // ESTRATÉGIA: Processar apenas a PRIMEIRA tool_call para manter o fluxo conversacional natural
+  // Se há múltiplas tool_calls, processa só a primeira e deixa a IA decidir o próximo passo
+  const toolCallsToProcess = response.message.tool_calls.slice(0, 1); // Apenas a primeira
+  const totalToolCalls = response.message.tool_calls.length;
+  
+  if (totalToolCalls > 1) {
+    console.log(`[ToolCall] ⚠️ DETECTADAS ${totalToolCalls} tool_calls. Processando apenas a primeira para manter fluxo sequencial.`);
+    console.log(`[ToolCall] 💡 A IA poderá continuar com as demais tool_calls na próxima resposta.`);
+  }
 
   // Coletar todas as respostas das ferramentas primeiro
   const toolResponses = [];
   
-  for (const toolCall of response.message.tool_calls) {
+  for (const toolCall of toolCallsToProcess) {
     const toolName = toolCall.function.name;
     let toolResultContent = '';
     let actualToolName = toolName;
@@ -433,28 +452,28 @@ async function toolCall(messages, response, tools, from, id, userContent) {
   // Adicionar todas as respostas das ferramentas ao array de mensagens
   newMessages.push(...toolResponses);
 
+  // IMPORTANTE: Modificar a mensagem assistant original para conter apenas a tool_call processada
+  // Isso evita problemas de tool_calls órfãs para as tool_calls que não foram processadas ainda
+  const modifiedAssistantMessage = {
+    ...response.message,
+    tool_calls: toolCallsToProcess // Apenas as tool_calls que foram realmente processadas
+  };
+  
+  // Substituir a mensagem assistant original pela versão modificada
+  newMessages[newMessages.length - toolResponses.length - 1] = modifiedAssistantMessage;
+
   // Validação final para debug
-  const toolCallIds = response.message.tool_calls.map(tc => tc.id);
+  const originalToolCallIds = response.message.tool_calls.map(tc => tc.id);
+  const processedToolCallIds = toolCallsToProcess.map(tc => tc.id);
   const toolResponseIds = toolResponses.map(tr => tr.tool_call_id);
   
-  console.log(`[ToolCall] 📊 Debug - Tool call IDs esperados: ${toolCallIds.join(', ')}`);
+  console.log(`[ToolCall] 📊 Debug - Tool call IDs originais: ${originalToolCallIds.join(', ')}`);
+  console.log(`[ToolCall] 📊 Debug - Tool call IDs processados: ${processedToolCallIds.join(', ')}`);
   console.log(`[ToolCall] 📊 Debug - Tool response IDs encontrados: ${toolResponseIds.join(', ')}`);
   
-  const missingResponses = toolCallIds.filter(id => !toolResponseIds.includes(id));
-  if (missingResponses.length > 0) {
-    console.error(`[ToolCall] ⚠️ ERRO CRÍTICO: Tool calls sem resposta detectadas: ${missingResponses.join(', ')}`);
-    // Isso não deveria acontecer mais, mas vamos adicionar como fallback
-    for (const missingId of missingResponses) {
-      const fallbackResponse = {
-        role: 'tool',
-        tool_call_id: missingId,
-        name: 'unknown',
-        content: 'Erro: ferramenta não encontrada ou falhou ao executar.',
-      };
-      toolResponses.push(fallbackResponse);
-      newMessages.push(fallbackResponse);
-      console.log(`[ToolCall] 🆘 Fallback: Adicionada resposta de erro para ${missingId}`);
-    }
+  if (totalToolCalls > 1) {
+    const remainingToolCallIds = response.message.tool_calls.slice(1).map(tc => tc.id);
+    console.log(`[ToolCall] 📊 Debug - Tool call IDs restantes (para próxima iteração): ${remainingToolCallIds.join(', ')}`);
   }
 
   console.log(`[ToolCall] 🔄 Enviando todos os resultados das ferramentas para a IA...`);
@@ -483,15 +502,27 @@ async function toolCall(messages, response, tools, from, id, userContent) {
   const sanitizedToolMessages = sanitizeMessagesForChat(newMessages);
   console.log(`[ToolCall] 🧹 Mensagens sanitizadas para tool call: ${newMessages.length} -> ${sanitizedToolMessages.length}`);
   
-  // Modificar o toolsParam para undefined para permitir resposta livre (sem tool_choice="required")
+  // ESTRATÉGIA MELHORADA: Permitir que a IA continue processando tool_calls, mas UMA por vez
+  // Isso permite fluxos como: imagem -> mensagem -> imagem -> mensagem
   const newResponse = await chatAi(sanitizedToolMessages, undefined);
   const normalizedNewResponse = normalizeAiResponse(newResponse);
   newMessages.push(normalizedNewResponse.message);
 
   if (normalizedNewResponse.message.tool_calls && normalizedNewResponse.message.tool_calls.length > 0) {
-    console.log(`[ToolCall] 🔁 Ferramentas adicionais detectadas, mas ignorando para evitar loop infinito`);
-    console.log(`[ToolCall] ⚠️ A IA quer executar mais ferramentas, mas vamos parar aqui para evitar recursão infinita`);
-    // Não executar recursivamente - apenas retornar as mensagens atuais
+    console.log(`[ToolCall] 🔁 IA quer executar ${normalizedNewResponse.message.tool_calls.length} ferramenta(s) adicional(is)`);
+    
+    // IMPORTANTE: Limitar a profundidade para evitar loops infinitos
+    const MAX_RECURSIVE_CALLS = 5; // Máximo de 5 iterações
+    
+    recursiveState.depth++;
+    
+    if (recursiveState.depth <= MAX_RECURSIVE_CALLS) {
+      console.log(`[ToolCall] 🔄 Continuando execução recursiva (profundidade ${recursiveState.depth}/${MAX_RECURSIVE_CALLS})`);
+      // Recursivamente processar mais tool_calls, mas uma por vez
+      return await toolCall(newMessages, normalizedNewResponse, tools, from, id, userContent, recursiveState);
+    } else {
+      console.log(`[ToolCall] ⚠️ Limite de recursão atingido (${MAX_RECURSIVE_CALLS}). Parando para evitar loop infinito.`);
+    }
   }
 
   console.log(`[ToolCall] ✅ Execução de ferramentas e ciclo de IA concluídos. Tempo total: ${Date.now() - toolStartTime}ms`);
