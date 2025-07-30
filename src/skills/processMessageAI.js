@@ -256,10 +256,10 @@ export default async function processMessage(message) {
 
 async function toolCall(messages, response, tools, from, id, userContent) {
   const toolStartTime = Date.now();
-  console.log(`[ToolCall] 🔧 Iniciando execução de ferramentas - ${new Date().toISOString()}`);
+  console.log(`[ToolCall] 🔧 Iniciando execução de ferramentas...`);
   let newMessages = [...messages];
-  let directCommunicationOccurred = false;
 
+  // Normalize legacy function_call to the modern tool_calls format if necessary
   if (response.message.function_call) {
     console.log(`[ToolCall] 🔄 Convertendo function_call legado para tool_calls...`);
     response.message.tool_calls = [
@@ -274,68 +274,67 @@ async function toolCall(messages, response, tools, from, id, userContent) {
     ];
   }
 
-  if (response.message.tool_calls && response.message.tool_calls.length > 0) {
-    console.log(`[ToolCall] 📋 Executando ${response.message.tool_calls.length} ferramenta(s) sequencialmente...`);
-
-    for (const toolCall of response.message.tool_calls) {
-      let toolResultContent = '';
-      const toolName = toolCall.function.name;
-      
-      try {
-        const args = JSON.parse(toolCall.function.arguments);
-
-        switch (toolName) {
-          case 'image_generation_agent':
-            const image = await generateImage({ ...args });
-            toolResultContent = image.error ? `Erro ao gerar imagem: ${image.error}` : `Image generated and sent: "${args.prompt}"`;
-            if (!image.error) await sendImage(from, image, args.prompt);
-            break;
-
-          case 'send_message':
-            await sendMessage(from, args.content);
-            toolResultContent = `Mensagem enviada ao usuário: "${args.content}"`;
-            directCommunicationOccurred = true;
-            break;
-
-          // Adicione outros casos de ferramentas aqui
-
-          default:
-            console.warn(`[ToolCall] Ferramenta desconhecida encontrada: ${toolName}`);
-            toolResultContent = `Ferramenta desconhecida: ${toolName}`;
-            break;
-        }
-      } catch (error) {
-        console.error(`[ToolCall] Erro ao executar ou analisar argumentos para a ferramenta ${toolName}:`, error);
-        toolResultContent = `Erro interno ao processar a ferramenta ${toolName}.`;
-      }
-
-      newMessages.push({
-        role: 'tool',
-        tool_call_id: toolCall.id,
-        name: toolName,
-        content: toolResultContent,
-      });
-    }
-
-    if (directCommunicationOccurred && !response.message.tool_calls.some(tc => tc.function.name !== 'send_message')) {
-        console.log(`[ToolCall] ✅ Comunicação direta executada, finalizando o turno.`);
-        return newMessages;
-    }
-
-    console.log(`[ToolCall] 🔄 Enviando resultados das ferramentas para IA...`);
-    const newResponse = await chatAi(newMessages, tools);
-    const normalizedNewResponse = normalizeAiResponse(newResponse);
-    newMessages.push(normalizedNewResponse.message);
-
-    if (normalizedNewResponse.message.tool_calls && normalizedNewResponse.message.tool_calls.length > 0) {
-      return toolCall(newMessages, normalizedNewResponse, tools, from, id, userContent);
-    }
-
-    return newMessages;
+  if (!response.message.tool_calls || response.message.tool_calls.length === 0) {
+    console.log(`[ToolCall] ⚠️ Nenhuma ferramenta para executar.`);
+    return messages;
   }
 
-  console.log(`[ToolCall] ⚠️ Nenhuma ferramenta para executar.`);
-  return messages;
+  console.log(`[ToolCall] 📋 Executando ${response.message.tool_calls.length} ferramenta(s) sequencialmente...`);
+
+  // Step 1: Sequentially execute all tool calls and add their results to the history.
+  for (const toolCall of response.message.tool_calls) {
+    const toolName = toolCall.function.name;
+    let toolResultContent = '';
+
+    try {
+      const args = JSON.parse(toolCall.function.arguments);
+
+      switch (toolName) {
+        case 'image_generation_agent':
+          const image = await generateImage({ ...args });
+          toolResultContent = image.error ? `Erro ao gerar imagem: ${image.error}` : `Image generated and sent: "${args.prompt}"`;
+          if (!image.error) await sendImage(from, image, args.prompt);
+          break;
+
+        case 'send_message':
+          await sendMessage(from, args.content);
+          toolResultContent = `Mensagem enviada ao usuário: "${args.content}"`;
+          break;
+
+        // ... other tool cases would go here ...
+
+        default:
+          console.warn(`[ToolCall] Ferramenta desconhecida encontrada: ${toolName}`);
+          toolResultContent = `Ferramenta desconhecida: ${toolName}`;
+          break;
+      }
+    } catch (error) {
+      console.error(`[ToolCall] Erro ao executar ou analisar argumentos para a ferramenta ${toolName}:`, error);
+      toolResultContent = `Erro interno ao processar a ferramenta ${toolName}.`;
+    }
+
+    newMessages.push({
+      role: 'tool',
+      tool_call_id: toolCall.id,
+      name: toolName,
+      content: toolResultContent,
+    });
+  }
+
+  // Step 2: Always call the AI again with the tool results for it to decide the next step.
+  console.log(`[ToolCall] 🔄 Enviando todos os resultados das ferramentas para a IA...`);
+  const newResponse = await chatAi(newMessages, tools);
+  const normalizedNewResponse = normalizeAiResponse(newResponse);
+  newMessages.push(normalizedNewResponse.message);
+
+  // Step 3: Handle recursive tool calls if the model asks for more tools.
+  if (normalizedNewResponse.message.tool_calls && normalizedNewResponse.message.tool_calls.length > 0) {
+    console.log(`[ToolCall] 🔁 Ferramentas adicionais detectadas, executando recursivamente...`);
+    return toolCall(newMessages, normalizedNewResponse, tools, from, id, userContent);
+  }
+
+  console.log(`[ToolCall] ✅ Execução de ferramentas e ciclo de IA concluídos. Tempo total: ${Date.now() - toolStartTime}ms`);
+  return newMessages;
 }
 
 
