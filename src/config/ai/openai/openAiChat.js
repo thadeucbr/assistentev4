@@ -116,5 +116,7 @@ export default async function openAiChat(chatMessages, toolsParam) {
   }
 
   const { choices } = await response.json();
+  console.log('OpenAI chat response:', choices);
+  console.log('Body:', body);
   return choices[0];
 }
