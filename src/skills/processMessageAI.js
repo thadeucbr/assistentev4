@@ -47,44 +47,58 @@ const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
 // Função para sanitizar mensagens antes de enviar para a IA
 function sanitizeMessagesForChat(messages) {
   const cleanMessages = [];
+  const skip = new Set(); // Índices de mensagens a pular
   
+  // Primeiro passo: identificar todas as mensagens assistant órfãs e suas tool responses
   for (let i = 0; i < messages.length; i++) {
+    if (skip.has(i)) continue;
+    
     const message = messages[i];
     
     // Se for uma mensagem assistant com tool_calls, verificar se todas as tool responses estão presentes
     if (message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0) {
       const toolCallIds = message.tool_calls.map(tc => tc.id);
-      
-      // Contar quantas tool responses seguem esta mensagem assistant CONSECUTIVAMENTE
-      let toolResponsesFound = 0;
       const foundToolCallIds = new Set();
+      const toolResponseIndices = [];
       
+      // Buscar por todas as tool responses correspondentes em TODA a conversa (não apenas consecutivas)
       for (let j = i + 1; j < messages.length; j++) {
         const nextMsg = messages[j];
         if (nextMsg.role === 'tool' && toolCallIds.includes(nextMsg.tool_call_id)) {
-          toolResponsesFound++;
           foundToolCallIds.add(nextMsg.tool_call_id);
-        } else {
-          // Encontrou uma mensagem que não é tool ou não corresponde aos tool_calls
-          // Parar a busca aqui
-          break;
+          toolResponseIndices.push(j);
         }
       }
       
-      // Se não encontrou todas as tool responses consecutivamente, remover a mensagem assistant e suas tool responses incompletas
-      if (toolResponsesFound !== toolCallIds.length) {
-        console.log(`[Sanitize] ⚠️ Removendo mensagem assistant órfã com tool_calls incompletas: esperado ${toolCallIds.length}, encontrado ${toolResponsesFound}`);
+      // Se não encontrou todas as tool responses, marcar para remoção
+      if (foundToolCallIds.size !== toolCallIds.length) {
+        const missingIds = toolCallIds.filter(id => !foundToolCallIds.has(id));
+        console.log(`[Sanitize] ⚠️ Removendo mensagem assistant órfã (índice ${i}) com tool_calls incompletas:`);
+        console.log(`[Sanitize]    - Tool calls esperados: [${toolCallIds.join(', ')}]`);
+        console.log(`[Sanitize]    - Tool calls encontrados: [${Array.from(foundToolCallIds).join(', ')}]`);
+        console.log(`[Sanitize]    - Tool calls órfãos: [${missingIds.join(', ')}]`);
         
-        // Pular esta mensagem assistant e suas tool responses que foram encontradas
-        i += toolResponsesFound; // Pular as tool responses que foram encontradas
-        continue;
+        // Marcar a mensagem assistant para remoção
+        skip.add(i);
+        
+        // Marcar as tool responses encontradas para remoção também (para manter consistência)
+        toolResponseIndices.forEach(idx => skip.add(idx));
       }
     }
-    
-    cleanMessages.push(message);
+  }
+  
+  // Segundo passo: construir array limpo pulando as mensagens marcadas
+  for (let i = 0; i < messages.length; i++) {
+    if (!skip.has(i)) {
+      cleanMessages.push(messages[i]);
+    }
   }
   
   console.log(`[Sanitize] 🧹 Mensagens sanitizadas: ${messages.length} -> ${cleanMessages.length}`);
+  if (skip.size > 0) {
+    console.log(`[Sanitize] 🗑️ Índices removidos: [${Array.from(skip).sort((a, b) => a - b).join(', ')}]`);
+  }
+  
   return cleanMessages;
 }
 
