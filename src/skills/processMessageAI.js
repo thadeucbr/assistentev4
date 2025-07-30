@@ -472,7 +472,7 @@ async function toolCall(messages, response, tools, from, id, userContent) {
           break;
 
         case 'send_message':
-          await sendMessage(from, args.content);
+          await sendMessage(from, args.content, id);
           toolResultContent = `Mensagem enviada ao usuário: "${args.content}"`;
           break;
 
@@ -611,7 +611,7 @@ async function toolCall(messages, response, tools, from, id, userContent) {
         if (toolCall.function.name === 'send_message') {
           try {
             const args = JSON.parse(toolCall.function.arguments);
-            await sendMessage(from, args.content);
+            await sendMessage(from, args.content, id);
             const toolResponse = {
               role: 'tool',
               tool_call_id: toolCall.id,
