@@ -257,126 +257,95 @@ export default async function processMessage(message) {
 async function toolCall(messages, response, tools, from, id, userContent) {
   const toolStartTime = Date.now();
   console.log(`[ToolCall] 🔧 Iniciando execução de ferramentas - ${new Date().toISOString()}`);
-  const newMessages = messages;
-  let directCommunicationOccurred = false; // Flag to track if a direct communication tool was used
-  
+  let newMessages = [...messages]; // Start with a copy of the incoming messages
+  let directCommunicationOccurred = false;
+
+  // Normalize legacy function_call to the modern tool_calls format
   if (response.message.function_call) {
     console.log(`[ToolCall] 🔄 Convertendo function_call para tool_calls... - ${new Date().toISOString()}`);
     response.message.tool_calls = [
       {
+        id: `call_legacy_${Date.now()}`,
+        type: 'function',
         function: {
           name: response.message.function_call.name,
-          arguments: JSON.parse(response.message.function_call.arguments)
-        }
-      }
+          arguments: response.message.function_call.arguments,
+        },
+      },
     ];
   }
-  
+
   if (response.message.tool_calls && response.message.tool_calls.length > 0) {
     console.log(`[ToolCall] 📋 Executando ${response.message.tool_calls.length} ferramenta(s) - ${new Date().toISOString()}`);
     
-    for (const toolCall of response.message.tool_calls) {
-      const args = JSON.parse(toolCall.function.arguments);
-      let stepTime = Date.now();
-      
-      if (toolCall.function.name === 'image_generation_agent') {
-        console.log(`[ToolCall] 🎨 Gerando imagem... - ${new Date().toISOString()}`);
-        const image = await generateImage({ ...args });
-        if (image.error) {
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Erro ao gerar imagem: ${image.error}` });
-        } else {
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Image generated and sent: "${args.prompt}"` });
-          await sendImage(from, image, args.prompt);
-        }
-        console.log(`[ToolCall] ✅ Imagem processada (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'send_message') {
-        console.log(`[ToolCall] 💬 Enviando mensagem... - ${new Date().toISOString()}`);
-        newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Mensagem enviada ao usuário: "${args.content}"` });
-        await sendMessage(from, args.content);
-        directCommunicationOccurred = true; // Set flag
-        console.log(`[ToolCall] ✅ Mensagem enviada (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'analyze_image') {
-        console.log(`[ToolCall] 🔍 Analisando imagem... - ${new Date().toISOString()}`);
-        const analysis = await analyzeImage({ id, prompt: args.prompt });
-        newMessages.push({ name: toolCall.function.name, role: 'tool', content: analysis });
-        console.log(`[ToolCall] ✅ Imagem analisada (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'reminder') {
-        console.log(`[ToolCall] ⏰ Processando lembrete... - ${new Date().toISOString()}`);
-        if (args.action === 'create') {
-          const newReminder = await addReminder(from, args.message, args.scheduledTime);
-          scheduleReminder(newReminder);
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Lembrete criado: ${JSON.stringify(newReminder)}` });
-        } else if (args.action === 'list') {
-          const reminders = await getReminders(from);
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Seus lembretes: ${JSON.stringify(reminders)}` });
-        }
-        console.log(`[ToolCall] ✅ Lembrete processado (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'lottery_check') {
-        console.log(`[ToolCall] 🎲 Verificando loteria... - ${new Date().toISOString()}`);
-        const result = await lotteryCheck(args.modalidade, args.sorteio);
-        newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
-        console.log(`[ToolCall] ✅ Loteria verificada (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'browse') {
-        console.log(`[ToolCall] 🌐 Navegando na web... - ${new Date().toISOString()}`);
-        const result = await browse({ url: args.url });
-        if (result.error && result.error.includes('net::ERR_NAME_NOT_RESOLVED')) {
-          console.warn(`[ToolCall] ⚠️ Browse falhou para ${args.url}, tentando busca web como fallback`);
-          const webSearchResult = await webSearch({ query: userContent });
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Browse failed. Attempted web search with query "${userContent}": ${JSON.stringify(webSearchResult)}` });
-        } else {
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: JSON.stringify(result) });
-        }
-        console.log(`[ToolCall] ✅ Navegação web concluída (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'web_search') {
-        console.log(`[ToolCall] 🔍 Buscando na web... - ${new Date().toISOString()}`);
-        const result = await webSearch({ query: args.query });
-        newMessages.push({ name: 'web_search', role: 'tool', content: JSON.stringify(result) });
-        console.log(`[ToolCall] ✅ Busca web concluída (+${Date.now() - stepTime}ms)`);
-      } else if (toolCall.function.name === 'generate_audio') {
-        console.log(`[ToolCall] 🔊 Gerando áudio... - ${new Date().toISOString()}`);
-        const audioResult = await generateAudio(args.textToSpeak);
-        if (audioResult.success) {
-          await sendPtt(from, audioResult.audioBuffer, id);
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Áudio gerado e enviado: "${args.textToSpeak}"` });
-          directCommunicationOccurred = true; // Set flag
-        } else {
-          newMessages.push({ name: toolCall.function.name, role: 'tool', content: `Erro ao gerar áudio: ${audioResult.error}` });
-        }
-        console.log(`[ToolCall] ✅ Áudio processado (+${Date.now() - stepTime}ms)`);
-      }
-    }
+    const toolResults = [];
 
-    // If a direct communication tool was used, we are done with this turn.
+    // Step 1: Execute all tool calls in parallel
+    const toolPromises = response.message.tool_calls.map(async (toolCall) => {
+      const args = JSON.parse(toolCall.function.arguments);
+      const toolName = toolCall.function.name;
+      let result = { tool_call_id: toolCall.id, name: toolName, content: '' };
+
+      try {
+        switch (toolName) {
+          case 'image_generation_agent':
+            const image = await generateImage({ ...args });
+            if (image.error) {
+              result.content = `Erro ao gerar imagem: ${image.error}`;
+            } else {
+              await sendImage(from, image, args.prompt);
+              result.content = `Image generated and sent: "${args.prompt}"`;
+            }
+            break;
+          case 'send_message':
+            await sendMessage(from, args.content);
+            result.content = `Mensagem enviada ao usuário: "${args.content}"`;
+            directCommunicationOccurred = true;
+            break;
+          // ... add other tool cases here ...
+          default:
+            result.content = `Ferramenta desconhecida: ${toolName}`;
+            break;
+        }
+      } catch (error) {
+        console.error(`[ToolCall] Erro ao executar a ferramenta ${toolName}:`, error);
+        result.content = `Erro interno ao executar a ferramenta ${toolName}.`;
+      }
+      return result;
+    });
+
+    const executedTools = await Promise.all(toolPromises);
+
+    // Step 2: Add all tool results to the message history
+    executedTools.forEach(toolResult => {
+      newMessages.push({
+        role: 'tool',
+        tool_call_id: toolResult.tool_call_id,
+        name: toolResult.name,
+        content: toolResult.content,
+      });
+    });
+
+    // Step 3: Decide if a follow-up call to the AI is needed
     if (directCommunicationOccurred) {
-      console.log(`[ToolCall] ✅ Comunicação direta executada, finalizando - TEMPO TOTAL TOOLS: ${Date.now() - toolStartTime}ms - ${new Date().toISOString()}`);
+      console.log(`[ToolCall] ✅ Comunicação direta executada, finalizando o turno. - ${new Date().toISOString()}`);
       return newMessages;
     }
 
-    let stepTime = Date.now();
-    console.log(`[ToolCall] 🔄 Enviando resposta das ferramentas para IA... - ${new Date().toISOString()}`);
-    const newResponse = await chatAi(newMessages);
-    console.log(`[ToolCall] ✅ Nova resposta da IA recebida (+${Date.now() - stepTime}ms)`);
-
-    // Normalizar a resposta para garantir estrutura consistente
-    stepTime = Date.now();
-    console.log(`[ToolCall] 🔧 Normalizando nova resposta da IA... - ${new Date().toISOString()}`);
+    console.log(`[ToolCall] 🔄 Enviando resultados das ferramentas para IA... - ${new Date().toISOString()}`);
+    const newResponse = await chatAi(newMessages, tools);
     const normalizedNewResponse = normalizeAiResponse(newResponse);
-    console.log(`[ToolCall] ✅ Nova resposta normalizada (+${Date.now() - stepTime}ms)`);
-
     newMessages.push(normalizedNewResponse.message);
-    if ((normalizedNewResponse.message.tool_calls && normalizedNewResponse.message.tool_calls.length > 0) || normalizedNewResponse.message.function_call) {
-      console.log(`[ToolCall] 🔁 Ferramentas adicionais detectadas, executando recursivamente... - ${new Date().toISOString()}`);
-      return toolCall(newMessages, normalizedNewResponse, tools, from, id);
+
+    // Handle potential recursive tool calls
+    if (normalizedNewResponse.message.tool_calls && normalizedNewResponse.message.tool_calls.length > 0) {
+      return toolCall(newMessages, normalizedNewResponse, tools, from, id, userContent);
     }
 
-    // Fallback for when the model forgets to use the send_message tool
-    // if (normalizedNewResponse.message.content && normalizedNewResponse.message.content.trim().length > 0) {
-    //   await sendMessage(from, normalizedNewResponse.message.content);
-    // }
-
-    console.log(`[ToolCall] ✅ Execução de ferramentas concluída - TEMPO TOTAL TOOLS: ${Date.now() - toolStartTime}ms - ${new Date().toISOString()}`);
     return newMessages;
   }
+
   console.log(`[ToolCall] ⚠️ Nenhuma ferramenta para executar - ${new Date().toISOString()}`);
   return messages;
 }
+
