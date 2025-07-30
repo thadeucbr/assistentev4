@@ -4,58 +4,82 @@ const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 
+/**
+ * Sanitizes and filters a list of chat messages to ensure they conform to the OpenAI API specifications.
+ * This function addresses several common issues:
+ * 1.  **Orphaned Tool Messages**: Removes 'tool' messages that do not follow an 'assistant' message with 'tool_calls'.
+ * 2.  **Missing tool_call_id**: Assigns the correct 'tool_call_id' to 'tool' messages based on the preceding 'assistant' message.
+ * 3.  **Malformed tool_calls**: Ensures 'assistant' tool calls have the required 'type', 'id', and stringified 'arguments'.
+ * 4.  **Null Content**: Sets 'content' to null for assistant messages with 'tool_calls', as required.
+ * 5.  **Legacy Roles/Properties**: Converts legacy 'function' roles to 'tool' and removes deprecated 'name' properties.
+ *
+ * @param {Array<Object>} messages The raw array of chat messages.
+ * @returns {Array<Object>} A new array of sanitized and filtered messages ready for the API.
+ */
 function sanitizeMessages(messages) {
-  return messages.map((message, index) => {
-    const sanitizedMessage = { ...message };
+  const cleanMessages = [];
+  
+  for (let i = 0; i < messages.length; i++) {
+    let message = { ...messages[i] };
 
-    // Sanitize assistant tool calls to match the required API format.
-    // This addresses errors like "Missing required parameter: ...type".
-    if (sanitizedMessage.role === 'assistant' && sanitizedMessage.tool_calls) {
-      // When tool_calls is present, content must be null.
-      sanitizedMessage.content = null;
-      sanitizedMessage.tool_calls = sanitizedMessage.tool_calls.map((toolCall, toolIndex) => {
+    // Convert legacy 'function' role to 'tool' before processing
+    if (message.role === 'function') {
+      message.role = 'tool';
+    }
+
+    // Remove deprecated 'name' from user/assistant roles
+    if (message.role === 'user' || message.role === 'assistant') {
+      delete message.name;
+    }
+
+    // Ensure content is not null (unless tool_calls are present)
+    if (message.content === null && !message.tool_calls) {
+      message.content = '';
+    }
+
+    if (message.role === 'assistant' && message.tool_calls) {
+      // Assistant message with tool calls must have null content
+      message.content = null;
+      // Sanitize the tool calls themselves
+      message.tool_calls = message.tool_calls.map((toolCall, toolIndex) => {
         const newToolCall = { ...toolCall };
-
-        // FIX 1: Add the 'type' field, which is required. It's always 'function'.
-        if (!newToolCall.type) {
-          newToolCall.type = 'function';
-        }
-
-        // FIX 2: Add a unique ID if it's missing. This is crucial for matching tool results.
-        // The calling code should persist the original ID from the API response.
-        // This is a fallback to prevent an API error.
-        if (!newToolCall.id) {
-          newToolCall.id = `call_generated_${index}_${toolIndex}`;
-        }
-
-        // FIX 3: Ensure the 'arguments' field inside the 'function' object is a JSON string.
+        if (!newToolCall.type) newToolCall.type = 'function';
+        if (!newToolCall.id) newToolCall.id = `call_generated_${i}_${toolIndex}`;
         if (newToolCall.function && typeof newToolCall.function.arguments === 'object' && newToolCall.function.arguments !== null) {
           newToolCall.function.arguments = JSON.stringify(newToolCall.function.arguments);
         }
-        
         return newToolCall;
       });
     }
+
+    if (message.role === 'tool') {
+      const prevMessage = cleanMessages[cleanMessages.length - 1];
+      
+      // A 'tool' message must follow an 'assistant' message with 'tool_calls'.
+      if (!prevMessage || prevMessage.role !== 'assistant' || !prevMessage.tool_calls) {
+        // This is an orphaned tool message, so we discard it.
+        continue;
+      }
+
+      // The 'tool' message needs a 'tool_call_id'. We find the corresponding call
+      // in the previous assistant message by matching the function name.
+      const matchingToolCall = prevMessage.tool_calls.find(
+        (tc) => tc.function && tc.function.name === message.name
+      );
+
+      if (matchingToolCall && matchingToolCall.id) {
+        message.tool_call_id = matchingToolCall.id;
+        delete message.name; // 'name' is deprecated for the 'tool' role.
+      } else {
+        // This tool message doesn't correspond to any tool call, so we discard it.
+        continue;
+      }
+    }
     
-    // Convert legacy 'function' role messages to the new 'tool' role.
-    if (sanitizedMessage.role === 'function') {
-      sanitizedMessage.role = 'tool';
-      // Note: The message will likely be missing a 'tool_call_id', which the API requires.
-      // This conversion is a first step. The calling code must be updated to provide the ID.
-    }
+    cleanMessages.push(message);
+  }
 
-    // Remove the deprecated 'name' property from user and assistant messages.
-    if (sanitizedMessage.role === 'user' || sanitizedMessage.role === 'assistant') {
-      delete sanitizedMessage.name;
-    }
-
-    // Ensure message content is not null (unless tool_calls is present), as it can cause issues. An empty string is safer.
-    if (sanitizedMessage.content === null && !sanitizedMessage.tool_calls) {
-      sanitizedMessage.content = '';
-    }
-
-    return sanitizedMessage;
-  });
+  return cleanMessages;
 }
 
 
