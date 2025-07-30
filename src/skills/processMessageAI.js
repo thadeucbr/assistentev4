@@ -312,22 +312,44 @@ export default async function processMessage(message) {
     messages.push({ role: 'user', content: userContent });
     messages.push(response.message);
 
-    if ((response.message.tool_calls && response.message.tool_calls.length > 0) || response.message.function_call) {
-      stepTime = Date.now();
-      console.log(`[ProcessMessage] 🛠️ Executando ferramentas... - ${new Date().toISOString()}`);
-      messages = await toolCall(messages, response, tools, data.from, data.id, userContent);
-      console.log(`[ProcessMessage] ✅ Ferramentas executadas (+${Date.now() - stepTime}ms)`);
-    } else if (response.message.tool_calls && response.message.tool_calls.length > 0) {
-      // Fallback: garantir que toda tool_call tenha uma mensagem tool, mesmo se não houver execução
-      for (const toolCall of response.message.tool_calls) {
-        const fallbackResponse = {
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: 'Erro: ferramenta não encontrada ou falhou ao executar.',
-        };
-        messages.push(fallbackResponse);
-        console.log(`[ProcessMessage] 🆘 Fallback: Adicionada resposta de erro para tool_call_id=${toolCall.id}`);
+    // Forçar ciclo até receber uma resposta send_message ou atingir limite de tentativas
+    let toolCycleCount = 0;
+    const MAX_TOOL_CYCLES = 3;
+    let lastResponse = response.message;
+    while (toolCycleCount < MAX_TOOL_CYCLES) {
+      if ((lastResponse.tool_calls && lastResponse.tool_calls.length > 0) || lastResponse.function_call) {
+        stepTime = Date.now();
+        console.log(`[ProcessMessage] 🛠️ Executando ferramentas... - ${new Date().toISOString()}`);
+        messages = await toolCall(messages, { message: lastResponse }, tools, data.from, data.id, userContent);
+        console.log(`[ProcessMessage] ✅ Ferramentas executadas (+${Date.now() - stepTime}ms)`);
+        // Buscar a última mensagem assistant gerada
+        const lastAssistantMsg = messages.filter(m => m.role === 'assistant').slice(-1)[0];
+        if (lastAssistantMsg) {
+          lastResponse = lastAssistantMsg;
+        } else {
+          break;
+        }
+        // Se a última resposta assistant contém send_message, encerra ciclo
+        if (lastResponse.tool_calls && lastResponse.tool_calls.some(tc => tc.function.name === 'send_message')) {
+          break;
+        }
+      } else if (lastResponse.tool_calls && lastResponse.tool_calls.length > 0) {
+        // Fallback: garantir que toda tool_call tenha uma mensagem tool, mesmo se não houver execução
+        for (const toolCall of lastResponse.tool_calls) {
+          const fallbackResponse = {
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: 'Erro: ferramenta não encontrada ou falhou ao executar.',
+          };
+          messages.push(fallbackResponse);
+          console.log(`[ProcessMessage] 🆘 Fallback: Adicionada resposta de erro para tool_call_id=${toolCall.id}`);
+        }
+        break;
+      } else {
+        // Se não há tool_calls, encerra ciclo
+        break;
       }
+      toolCycleCount++;
     }
     
     // --- Final Asynchronous Updates ---
