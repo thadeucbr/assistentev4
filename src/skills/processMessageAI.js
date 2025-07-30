@@ -354,7 +354,7 @@ async function toolCall(messages, response, tools, from, id, userContent) {
     const toolResponse = {
       role: 'tool',
       tool_call_id: toolCall.id,
-      name: toolName, // Usar o nome ORIGINAL da tool_call, não o corrigido
+      // NÃO incluir 'name' para evitar problemas com sanitizeMessages
       content: toolResultContent,
     };
     
