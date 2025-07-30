@@ -417,13 +417,15 @@ async function toolCall(messages, response, tools, from, id, userContent) {
   console.log(`[ToolCall] 🔍 JSON das mensagens que serão enviadas:`);
   console.log(JSON.stringify(newMessages, null, 2));
   
-  const newResponse = await chatAi(newMessages, tools);
+  // Modificar o toolsParam para undefined para permitir resposta livre (sem tool_choice="required")
+  const newResponse = await chatAi(newMessages, undefined);
   const normalizedNewResponse = normalizeAiResponse(newResponse);
   newMessages.push(normalizedNewResponse.message);
 
   if (normalizedNewResponse.message.tool_calls && normalizedNewResponse.message.tool_calls.length > 0) {
-    console.log(`[ToolCall] 🔁 Ferramentas adicionais detectadas, executando recursivamente...`);
-    return toolCall(newMessages, normalizedNewResponse, tools, from, id, userContent);
+    console.log(`[ToolCall] 🔁 Ferramentas adicionais detectadas, mas ignorando para evitar loop infinito`);
+    console.log(`[ToolCall] ⚠️ A IA quer executar mais ferramentas, mas vamos parar aqui para evitar recursão infinita`);
+    // Não executar recursivamente - apenas retornar as mensagens atuais
   }
 
   console.log(`[ToolCall] ✅ Execução de ferramentas e ciclo de IA concluídos. Tempo total: ${Date.now() - toolStartTime}ms`);
