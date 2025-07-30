@@ -503,7 +503,33 @@ async function toolCall(messages, response, tools, from, id, userContent) {
 
         case 'information_retrieval_agent':
           const searchResult = await webSearch(args.query);
-          toolResultContent = `Busca realizada: ${searchResult.results}`;
+          if (searchResult.error) {
+            toolResultContent = `Erro na busca web: ${searchResult.error}`;
+            if (searchResult.smartError && searchResult.fallbackError) {
+              toolResultContent += `\nDetalhes - Smart: ${searchResult.smartError}, Fallback: ${searchResult.fallbackError}`;
+            }
+            if (searchResult.partialResults && searchResult.partialResults.length > 0) {
+              toolResultContent += ` URLs parcialmente acessadas: ${searchResult.partialResults.join(', ')}`;
+            }
+          } else if (searchResult.success) {
+            const methodInfo = searchResult.method === 'smart' ? '(Busca Inteligente)' : 
+                              searchResult.method === 'fallback' ? `(Busca Simplificada via ${searchResult.usedEngine})` :
+                              '(Último Recurso)';
+            
+            toolResultContent = `Busca web concluída com sucesso para "${args.query}" ${methodInfo}.
+
+RESULTADO ENCONTRADO:
+${searchResult.result}
+
+FONTES CONSULTADAS:
+${searchResult.sources && searchResult.sources.length > 0 ? 
+  searchResult.sources.map((url, index) => `${index + 1}. ${url}`).join('\n') : 
+  'Nenhuma fonte específica listada'}
+
+Esta informação foi obtida através de busca web automatizada${searchResult.method === 'smart' ? ' com análise inteligente de múltiplas fontes' : ''}.`;
+          } else {
+            toolResultContent = `Busca realizada para "${args.query}", mas formato de resposta inesperado: ${JSON.stringify(searchResult)}`;
+          }
           break;
 
         default:

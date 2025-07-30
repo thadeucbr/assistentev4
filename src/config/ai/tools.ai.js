@@ -88,11 +88,11 @@ export default [
         type: 'function',
         function: {
           name: 'information_retrieval_agent',
-          description: 'An agent specialized in web browsing and searching. Use this tool when you need to find information on the web, browse a specific URL, or perform a web search. It handles retries and fallbacks internally.',
+          description: 'Agente especializado em busca web inteligente. Este agente possui controle total sobre um navegador e pode: navegar por sites, interagir com páginas web, clicar em elementos, preencher formulários, analisar conteúdo, e extrair informações relevantes. Ele busca automaticamente informações atualizadas usando estratégias inteligentes de navegação. Use esta ferramenta sempre que precisar de informações em tempo real, dados atualizados, ou quando o conhecimento interno não for suficiente.',
           parameters: {
             type: 'object',
             properties: {
-              query: { type: 'string', description: `The user's original query or a concise search term for the information needed.` }
+              query: { type: 'string', description: `A consulta ou pergunta do usuário para a qual você precisa buscar informações atualizadas na web. Seja específico e claro sobre o que está procurando.` }
             },
             required: ['query']
           }

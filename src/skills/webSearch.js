@@ -1,70 +1,76 @@
-import puppeteer from 'puppeteer-core';
-import logError from '../utils/logger.js';
-
-// Helper para encontrar o caminho do executável do Chrome
-function getChromeExecutablePath() {
-  // Adapte este caminho se o seu Chrome estiver instalado em um local diferente
-  if (process.platform === 'win32') {
-    return 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-  } else if (process.platform === 'darwin') {
-    return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-  } else {
-    return '/usr/bin/google-chrome'; // Caminho comum para Linux
-  }
-}
+import smartWebSearch from '../agents/SmartWebSearchAgent.js';
+import fallbackWebSearch from '../agents/FallbackWebSearchAgent.js';
+import logger from '../utils/logger.js';
 
 export default async function webSearch(query) {
-  console.log(`Performing web search on Bing for: "${query}"`);
-  let browser = null;
+  logger.info('WebSearch', `Iniciando busca inteligente para: "${query}"`);
+  
   try {
-    browser = await puppeteer.launch({
-      executablePath: getChromeExecutablePath(),
-      headless: true, // Roda sem abrir uma janela do navegador
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-    const page = await browser.newPage();
-
-    // Constrói a URL de busca do Bing
-    const searchUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}`;
-    await page.goto(searchUrl);
-
-    // Espera os resultados da busca do Bing serem carregados
-    await page.waitForSelector('#b_results');
-
-    // Extrai os resultados da página do Bing
-    // Estes seletores são específicos para o layout do Bing
-    const searchResults = await page.evaluate(() => {
-      const results = [];
-      document.querySelectorAll('li.b_algo').forEach(result => {
-        const titleElement = result.querySelector('h2 a');
-        const linkElement = result.querySelector('h2 a');
-        const snippetElement = result.querySelector('.b_caption p');
-
-        // Log to debug if elements are found
-        console.log('Title element:', titleElement);
-        console.log('Link element:', linkElement);
-        console.log('Snippet element:', snippetElement);
-
-        if (titleElement && linkElement) { // Snippet is optional
-          results.push(JSON.stringify({
-            title: titleElement.innerText.trim(),
-            link: linkElement.href,
-            snippet: snippetElement ? snippetElement.innerText.trim() : ''
-          }));
-        }
-      });
-      return results; // Retorna os 5 primeiros resultados
-    });
-
-    return { results: JSON.stringify(searchResults) };
-
-  } catch (error) {
-    logError(error, `webSearch - Failed to perform web search for query: "${query}"`);
-    console.error('Error during Bing web search:', error);
-    return { error: 'Failed to perform web search.', details: error.message };
-  } finally {
-    if (browser) {
-      await browser.close();
+    // Tentar primeiro com o agente inteligente
+    const smartResult = await smartWebSearch(query);
+    
+    if (smartResult && !smartResult.error && smartResult.result) {
+      logger.info('WebSearch', 'Busca inteligente concluída com sucesso');
+      return {
+        success: true,
+        result: smartResult.result,
+        sources: smartResult.sources || [],
+        query: smartResult.query,
+        method: 'smart'
+      };
     }
+    
+    // Se falhou, usar fallback
+    logger.warn('WebSearch', 'Busca inteligente falhou, usando fallback...', smartResult?.error);
+    
+    const fallbackResult = await fallbackWebSearch(query);
+    
+    if (fallbackResult && !fallbackResult.error && fallbackResult.result) {
+      logger.info('WebSearch', 'Busca fallback concluída com sucesso');
+      return {
+        success: true,
+        result: fallbackResult.result,
+        sources: fallbackResult.sources || [],
+        query: fallbackResult.query,
+        method: 'fallback',
+        usedEngine: fallbackResult.usedEngine
+      };
+    }
+    
+    // Se ambos falharam
+    logger.error('WebSearch', 'Ambos os métodos de busca falharam');
+    return { 
+      error: 'Falha em ambos os sistemas de busca web',
+      smartError: smartResult?.error,
+      fallbackError: fallbackResult?.error,
+      query
+    };
+    
+  } catch (error) {
+    logger.error('WebSearch', 'Erro crítico no sistema de busca:', error);
+    
+    // Último recurso: tentar fallback simples
+    try {
+      logger.warn('WebSearch', 'Tentando último recurso com fallback...');
+      const lastResortResult = await fallbackWebSearch(query);
+      
+      if (lastResortResult && !lastResortResult.error) {
+        return {
+          success: true,
+          result: lastResortResult.result,
+          sources: lastResortResult.sources || [],
+          query: lastResortResult.query,
+          method: 'last-resort'
+        };
+      }
+    } catch (fallbackError) {
+      logger.error('WebSearch', 'Último recurso também falhou:', fallbackError);
+    }
+    
+    return { 
+      error: 'Falha crítica completa no sistema de busca web', 
+      details: error.message,
+      query
+    };
   }
 }
