@@ -55,7 +55,7 @@ function sanitizeMessagesForChat(messages) {
     if (message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0) {
       const toolCallIds = message.tool_calls.map(tc => tc.id);
       
-      // Contar quantas tool responses seguem esta mensagem assistant
+      // Contar quantas tool responses seguem esta mensagem assistant CONSECUTIVAMENTE
       let toolResponsesFound = 0;
       const foundToolCallIds = new Set();
       
@@ -64,17 +64,18 @@ function sanitizeMessagesForChat(messages) {
         if (nextMsg.role === 'tool' && toolCallIds.includes(nextMsg.tool_call_id)) {
           toolResponsesFound++;
           foundToolCallIds.add(nextMsg.tool_call_id);
-        } else if (nextMsg.role !== 'tool') {
-          // Parou de encontrar tool messages
+        } else {
+          // Encontrou uma mensagem que não é tool ou não corresponde aos tool_calls
+          // Parar a busca aqui
           break;
         }
       }
       
-      // Se não encontrou todas as tool responses, remover a mensagem assistant e suas tool responses incompletas
+      // Se não encontrou todas as tool responses consecutivamente, remover a mensagem assistant e suas tool responses incompletas
       if (toolResponsesFound !== toolCallIds.length) {
         console.log(`[Sanitize] ⚠️ Removendo mensagem assistant órfã com tool_calls incompletas: esperado ${toolCallIds.length}, encontrado ${toolResponsesFound}`);
         
-        // Pular esta mensagem assistant e suas tool responses incompletas
+        // Pular esta mensagem assistant e suas tool responses que foram encontradas
         i += toolResponsesFound; // Pular as tool responses que foram encontradas
         continue;
       }
