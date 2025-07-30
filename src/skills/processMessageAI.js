@@ -279,7 +279,7 @@ async function toolCall(messages, response, tools, from, id, userContent) {
       const args = JSON.parse(toolCall.function.arguments);
       let stepTime = Date.now();
       
-      if (toolCall.function.name === 'generate_image') {
+      if (toolCall.function.name === 'image_generation_agent') {
         console.log(`[ToolCall] 🎨 Gerando imagem... - ${new Date().toISOString()}`);
         const image = await generateImage({ ...args });
         if (image.error) {
