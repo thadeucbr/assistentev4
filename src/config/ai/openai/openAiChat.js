@@ -53,10 +53,17 @@ function sanitizeMessages(messages) {
     }
 
     if (message.role === 'tool') {
-      const prevMessage = cleanMessages[cleanMessages.length - 1];
+      // Find the most recent assistant message with tool_calls
+      let assistantMessage = null;
+      for (let j = cleanMessages.length - 1; j >= 0; j--) {
+        if (cleanMessages[j].role === 'assistant' && cleanMessages[j].tool_calls) {
+          assistantMessage = cleanMessages[j];
+          break;
+        }
+      }
       
       // A 'tool' message must follow an 'assistant' message with 'tool_calls'.
-      if (!prevMessage || prevMessage.role !== 'assistant' || !prevMessage.tool_calls) {
+      if (!assistantMessage) {
         // This is an orphaned tool message, so we discard it.
         continue;
       }
@@ -64,19 +71,19 @@ function sanitizeMessages(messages) {
       // The 'tool' message needs a 'tool_call_id'. 
       // First check if it already has a valid tool_call_id
       if (message.tool_call_id) {
-        // Verify this tool_call_id exists in the previous assistant message
-        const matchingToolCall = prevMessage.tool_calls.find(
+        // Verify this tool_call_id exists in the assistant message
+        const matchingToolCall = assistantMessage.tool_calls.find(
           (tc) => tc.id === message.tool_call_id
         );
         if (matchingToolCall) {
           delete message.name; // 'name' is deprecated for the 'tool' role.
         } else {
-          // tool_call_id doesn't match any in the previous message, discard
+          // tool_call_id doesn't match any in the assistant message, discard
           continue;
         }
       } else {
         // Fallback: try to match by function name if tool_call_id is missing
-        const matchingToolCall = prevMessage.tool_calls.find(
+        const matchingToolCall = assistantMessage.tool_calls.find(
           (tc) => tc.function && tc.function.name === message.name
         );
 
