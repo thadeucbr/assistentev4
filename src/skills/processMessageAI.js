@@ -118,11 +118,11 @@ export default async function processMessage(message) {
 
       const messagesWithEmbeddings = await Promise.all(
         warmMessages.map(async (msg) => {
-          if (msg.role === 'user' || msg.role === 'assistant') {
+          if ((msg.role === 'user' || msg.role === 'assistant') && typeof msg.content === 'string' && msg.content.length > 0) {
             const embedding = await embeddingModel.embedQuery(msg.content);
             return { ...msg, embedding };
           }
-          return msg;
+          return msg; // Retorna a mensagem sem embedding se o conteúdo for nulo ou vazio
         })
       );
 
