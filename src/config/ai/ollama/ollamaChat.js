@@ -3,11 +3,41 @@ import tools from '../tools.ai.js';
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'mistral';
 
+// Sanitizes messages to ensure tool call arguments are objects, not strings.
+function sanitizeMessagesForOllama(messages) {
+  return messages.map(msg => {
+    if (msg.tool_calls) {
+      const newToolCalls = msg.tool_calls.map(toolCall => {
+        if (toolCall.function && typeof toolCall.function.arguments === 'string') {
+          try {
+            const parsedArgs = JSON.parse(toolCall.function.arguments);
+            return {
+              ...toolCall,
+              function: {
+                ...toolCall.function,
+                arguments: parsedArgs,
+              },
+            };
+          } catch (e) {
+            console.error('Error parsing tool call arguments for Ollama:', e);
+            // Return original tool call if parsing fails
+            return toolCall;
+          }
+        }
+        return toolCall;
+      });
+      return { ...msg, tool_calls: newToolCalls };
+    }
+    return msg;
+  });
+}
+
 export default async function ollamaChat(chatMessages, toolsParam) { 
-  // console.log('ollamaChat', chatMessages);
+  const sanitizedMessages = sanitizeMessagesForOllama(chatMessages);
+
   const body = {
     model: OLLAMA_MODEL,
-    messages: chatMessages,
+    messages: sanitizedMessages,
     tools: toolsParam || tools,
     stream: false
   };
@@ -19,9 +49,10 @@ export default async function ollamaChat(chatMessages, toolsParam) {
     },
     body: JSON.stringify(body)
   });
-const raw = await response.text();
-if (!response.ok) throw new Error(`Ollama error ${response.status}\n${raw}`);
-const payload = JSON.parse(raw);
-// console.log('Ollama response:', payload);
-return payload;
+
+  const raw = await response.text();
+  if (!response.ok) throw new Error(`Ollama error ${response.status}\n${raw}`);
+  
+  const payload = JSON.parse(raw);
+  return payload;
 }
