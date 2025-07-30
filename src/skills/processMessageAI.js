@@ -354,12 +354,12 @@ async function toolCall(messages, response, tools, from, id, userContent) {
     const toolResponse = {
       role: 'tool',
       tool_call_id: toolCall.id,
-      name: actualToolName,
+      name: toolName, // Usar o nome ORIGINAL da tool_call, não o corrigido
       content: toolResultContent,
     };
     
     toolResponses.push(toolResponse);
-    console.log(`[ToolCall] ✅ Resposta coletada para ${toolCall.id}: ${actualToolName}`);
+    console.log(`[ToolCall] ✅ Resposta coletada para ${toolCall.id}: ${toolName} (original) -> ${actualToolName} (executado)`);
   }
 
   // Adicionar todas as respostas das ferramentas ao array de mensagens
@@ -397,8 +397,13 @@ async function toolCall(messages, response, tools, from, id, userContent) {
   newMessages.forEach((msg, index) => {
     if (msg.role === 'tool') {
       console.log(`  [${index}] ${msg.role}: tool_call_id=${msg.tool_call_id}, name=${msg.name}`);
+    } else if (msg.role === 'assistant' && msg.tool_calls) {
+      console.log(`  [${index}] ${msg.role}: ${msg.tool_calls.length} tool_calls`);
+      msg.tool_calls.forEach((tc, tcIndex) => {
+        console.log(`    [${tcIndex}] ${tc.id}: ${tc.function.name}`);
+      });
     } else {
-      console.log(`  [${index}] ${msg.role}: ${msg.content ? msg.content.substring(0, 50) + '...' : 'tool_calls presente'}`);
+      console.log(`  [${index}] ${msg.role}: ${msg.content ? msg.content.substring(0, 50) + '...' : 'sem conteúdo'}`);
     }
   });
   
