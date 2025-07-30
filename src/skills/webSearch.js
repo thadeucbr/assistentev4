@@ -56,7 +56,7 @@ export default async function webSearch(query) {
       return results.slice(0, 5); // Retorna os 5 primeiros resultados
     });
 
-    return { results: searchResults };
+    return { results: JSON.stringify(searchResults) };
 
   } catch (error) {
     logError(error, `webSearch - Failed to perform web search for query: "${query}"`);
