@@ -13,10 +13,12 @@ const sendReply = async (to, content, quotedMsgId, sendSeen = true) => {
   };
 
   const data = {
-    to,
-    content,
-    quotedMsgId,
-    sendSeen
+    args: {
+      to,
+      content,
+      quotedMsgId,
+      sendSeen
+    }
   };
 
   try {
