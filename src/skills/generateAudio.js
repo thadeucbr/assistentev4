@@ -146,7 +146,7 @@ export default async function generateAudio(textToSpeak) {
     return { success: true, audioBuffer };
 
   } catch (error) {
-    logError(error, `generateAudio - Failed to generate audio with text: "${text}"`);
+    logError(error, `generateAudio - Failed to generate audio with text: "${textToSpeak}"`);
     console.error('Ocorreu um erro geral no processo de geração de áudio:', error.message);
     return { success: false, error: error.message };
   }
