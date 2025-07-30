@@ -2,7 +2,7 @@ import axios from 'axios';
 
 export default async function sendImage(recipient, base64Image, prompt) {
     try {
-        console.log("Recipient:", recipient);
+        // console.log("Recipient:", recipient);
 
         // Adiciona prefixo base64 se não estiver presente
         const base64Prefix = "data:image/jpeg;base64,";
@@ -32,7 +32,7 @@ export default async function sendImage(recipient, base64Image, prompt) {
                 'api_key': process.env.WHATSAPP_SECRET,
             }
         });
-        console.log("Responase:", response.data);
+        // console.log("Responase:", response.data);
         return response.data;
     } catch (error) {
         console.error("Error sending image:", error.response ? error.response.data : error.message);
