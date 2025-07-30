@@ -279,10 +279,13 @@ async function toolCall(messages, response, tools, from, id, userContent) {
 
   console.log(`[ToolCall] 📋 Executando ${response.message.tool_calls.length} ferramenta(s) sequencialmente...`);
 
+  // Primeiro, vamos adicionar todas as respostas tool para garantir correspondência 1:1
   for (const toolCall of response.message.tool_calls) {
     const toolName = toolCall.function.name;
     let toolResultContent = '';
     let actualToolName = toolName;
+
+    console.log(`[ToolCall] 🔧 Processando tool_call: ${toolCall.id} - ${toolName}`);
 
     try {
       const args = JSON.parse(toolCall.function.arguments);
@@ -346,24 +349,30 @@ async function toolCall(messages, response, tools, from, id, userContent) {
     }
 
     // Garantir que sempre seja adicionada uma resposta tool para cada tool_call
-    newMessages.push({
+    const toolResponse = {
       role: 'tool',
       tool_call_id: toolCall.id,
       name: actualToolName,
       content: toolResultContent,
-    });
+    };
+    
+    newMessages.push(toolResponse);
+    console.log(`[ToolCall] ✅ Resposta adicionada para ${toolCall.id}: ${actualToolName}`);
   }
 
-  // Validar que todas as tool_calls foram respondidas
+  // Validação final para debug
   const toolCallIds = response.message.tool_calls.map(tc => tc.id);
   const toolResponseIds = newMessages
     .filter(msg => msg.role === 'tool')
     .map(msg => msg.tool_call_id);
   
+  console.log(`[ToolCall] 📊 Debug - Tool call IDs esperados: ${toolCallIds.join(', ')}`);
+  console.log(`[ToolCall] 📊 Debug - Tool response IDs encontrados: ${toolResponseIds.join(', ')}`);
+  
   const missingResponses = toolCallIds.filter(id => !toolResponseIds.includes(id));
   if (missingResponses.length > 0) {
-    console.error(`[ToolCall] ⚠️ Tool calls sem resposta detectadas: ${missingResponses.join(', ')}`);
-    // Adicionar respostas de erro para tool_calls faltantes
+    console.error(`[ToolCall] ⚠️ ERRO CRÍTICO: Tool calls sem resposta detectadas: ${missingResponses.join(', ')}`);
+    // Isso não deveria acontecer mais, mas vamos adicionar como fallback
     for (const missingId of missingResponses) {
       newMessages.push({
         role: 'tool',
@@ -371,10 +380,12 @@ async function toolCall(messages, response, tools, from, id, userContent) {
         name: 'unknown',
         content: 'Erro: ferramenta não encontrada ou falhou ao executar.',
       });
+      console.log(`[ToolCall] 🆘 Fallback: Adicionada resposta de erro para ${missingId}`);
     }
   }
 
   console.log(`[ToolCall] 🔄 Enviando todos os resultados das ferramentas para a IA...`);
+  console.log(`[ToolCall] 📊 Total de mensagens a enviar: ${newMessages.length}`);
   const newResponse = await chatAi(newMessages, tools);
   const normalizedNewResponse = normalizeAiResponse(newResponse);
   newMessages.push(normalizedNewResponse.message);
