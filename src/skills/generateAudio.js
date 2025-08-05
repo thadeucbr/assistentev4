@@ -83,8 +83,9 @@ async function generateAudioWithOpenAI(textToSpeak) {
   const apiKey = process.env.OPENAI_API_KEY;
   const voice = process.env.OPENAI_TTS_VOICE || 'onyx';
   const model = process.env.OPENAI_TTS_MODEL || 'tts-1';
+  const apiUrl = process.env.OPENAI_TTS_URL || 'https://api.openai.com/v1/audio/speech';
 
-  const response = await fetch('https://api.openai.com/v1/audio/speech', {
+  const response = await fetch(apiUrl, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,

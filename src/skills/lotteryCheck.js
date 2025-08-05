@@ -4,13 +4,14 @@ export default async function lotteryCheck(modalidade, sorteio = '') {
   try {
     console.log(`Iniciando verificação de loteria para modalidade: ${modalidade}, sorteio: ${sorteio}`);
     const sorteios = ['megasena', 'lotofacil', 'quina', 'lotomania', 'timemania', 'duplasena', 'supersete', 'loteca', 'diadesorte'];
+    const baseUrl = process.env.LOTTERY_API_URL || 'https://servicebus2.caixa.gov.br/portaldeloterias/api';
     
-    let uri = `https://servicebus2.caixa.gov.br/portaldeloterias/api/home/ultimos-resultados`;
+    let uri = `${baseUrl}/home/ultimos-resultados`;
     
     if (sorteio && !sorteios.includes(modalidade)) {
       return 'Modalidade inválida. As modalidades disponíveis são: ' + sorteios.join(', ');
     } else if (sorteio && sorteios.includes(modalidade)) {
-      uri = `https://servicebus2.caixa.gov.br/portaldeloterias/api/${modalidade}/${sorteio}`;
+      uri = `${baseUrl}/${modalidade}/${sorteio}`;
     }
     
     if (sorteio && !/^\d+$/.test(sorteio)) {

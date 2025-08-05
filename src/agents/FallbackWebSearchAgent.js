@@ -39,9 +39,21 @@ export default async function fallbackWebSearch(query) {
     
     // Estratégia 1: Tentar Google primeiro
     const searchEngines = [
-      { name: 'Google', url: 'https://www.google.com/search?q=', selector: '.g .yuRUbf a' },
-      { name: 'Bing', url: 'https://www.bing.com/search?q=', selector: '.b_algo h2 a' },
-      { name: 'DuckDuckGo', url: 'https://duckduckgo.com/?q=', selector: '.result__a' }
+      { 
+        name: 'Google', 
+        url: process.env.SEARCH_GOOGLE_URL || 'https://www.google.com/search?q=', 
+        selector: '.g .yuRUbf a' 
+      },
+      { 
+        name: 'Bing', 
+        url: process.env.SEARCH_BING_URL || 'https://www.bing.com/search?q=', 
+        selector: '.b_algo h2 a' 
+      },
+      { 
+        name: 'DuckDuckGo', 
+        url: process.env.SEARCH_DUCKDUCKGO_URL || 'https://duckduckgo.com/?q=', 
+        selector: '.result__a' 
+      }
     ];
 
     let searchResults = [];

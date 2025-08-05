@@ -60,7 +60,7 @@ async function analyzeImageWithOllama(base64Image, prompt) {
 }
 
 async function analyzeImageWithOpenAI(base64Image, prompt) {
-  const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
+  const OPENAI_URL = process.env.OPENAI_URL || 'https://api.openai.com/v1/chat/completions';
   const OPENAI_MODEL = 'gpt-4o-mini'; // ou outro modelo de visão da OpenAI
   const OPENAI_KEY = process.env.OPENAI_API_KEY;
 
