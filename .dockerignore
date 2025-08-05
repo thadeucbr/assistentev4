@@ -1,0 +1,10 @@
+node_modules
+.venv
+.git
+*.log
+logs/*.log
+temp_audio/*.wav
+temp_audio/*.ogg
+.env.local
+.DS_Store
+*.tmp

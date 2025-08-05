@@ -12,8 +12,11 @@ ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 const execPromise = util.promisify(exec);
 
 // --- Constantes de Configuração ---
-const PIPER_PATH = path.join(process.cwd(), 'piper', 'piper.exe');
-const MODEL_PATH = path.join(process.cwd(), 'piper', 'pt_BR-cadu-medium.onnx');
+const GTTS_SCRIPT_PATH = path.join(process.cwd(), 'src', 'scripts', 'gtts_generator.py');
+// No Docker, usamos o Python3 instalado globalmente
+const PYTHON_PATH = process.env.DOCKER_ENV 
+  ? 'python3'  // Docker environment (global installation)
+  : path.join(process.cwd(), '.venv', 'bin', 'python');  // Local development
 const TEMP_AUDIO_DIR = path.join(process.cwd(), 'temp_audio');
 
 
@@ -34,7 +37,7 @@ async function ensureTempDirExists() {
 }
 
 /**
- * Gera áudio usando o provedor local (Piper + FFMPEG).
+ * Gera áudio usando o Google Text-to-Speech (gTTS) localmente.
  * Retorna um Buffer com o áudio em formato OGG.
  * @param {string} textToSpeak O texto a ser falado.
  */
@@ -44,10 +47,29 @@ async function generateAudioLocally(textToSpeak) {
   const oggFilePath = path.resolve(path.join(TEMP_AUDIO_DIR, `${baseFileName}.ogg`));
 
   try {
-    // Etapa 1: Gerar .wav com Piper
-    const piperCommand = `echo "${textToSpeak.replace(/"/g, '\"')}" | "${PIPER_PATH}" --model "${MODEL_PATH}" --output_file "${wavFilePath}"`;
-    console.log('Gerando áudio localmente com Piper...');
-    await execPromise(piperCommand, { shell: true });
+    // Etapa 1: Gerar .wav com gTTS
+    // Determina qual Python usar baseado no ambiente
+    let pythonCmd;
+    
+    if (process.env.DOCKER_ENV) {
+      // No Docker, usa python3 do sistema
+      pythonCmd = 'python3';
+    } else {
+      // Local, tenta usar o venv primeiro
+      const localPythonPath = path.join(process.cwd(), '.venv', 'bin', 'python');
+      try {
+        await fs.access(localPythonPath);
+        pythonCmd = localPythonPath;
+      } catch {
+        // Fallback para python3 do sistema
+        pythonCmd = 'python3';
+      }
+    }
+    
+    const gttsCommand = `"${pythonCmd}" "${GTTS_SCRIPT_PATH}" --text "${textToSpeak.replace(/"/g, '\\"')}" --output "${wavFilePath}" --language pt-br`;
+    
+    console.log(`Gerando áudio localmente com Google TTS usando: ${pythonCmd}`);
+    await execPromise(gttsCommand, { shell: true });
 
     // Etapa 2: Converter .wav para .ogg com ffmpeg
     console.log('Convertendo para .ogg...');

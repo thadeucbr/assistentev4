@@ -10,6 +10,7 @@ services:
       - /usr/src/app/node_modules
     environment:
       - NODE_ENV=development
+      - DOCKER_ENV=true
     networks:
       - rede-compartilhada
 
