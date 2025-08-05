@@ -5,3 +5,6 @@ node_modules
 # Arquivos de log
 *.log
 logs/*.log
+
+google*.json
+*.ics

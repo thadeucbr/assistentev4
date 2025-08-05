@@ -87,11 +87,14 @@ class Logger {
     }
   }
 
-  // Determinar se deve mostrar no console
-  shouldShowInConsole(component, message) {
+    // Determinar se deve ser mostrado no console
+  shouldShowInConsole(level, message, component) {
+    // Verificar se message e component são strings válidas
+    const safeMessage = typeof message === 'string' ? message : '';
+    const safeComponent = typeof component === 'string' ? component : '';
+    
+    // Sempre mostrar erros críticos
     const criticalPatterns = [
-      'Iniciando processamento',
-      'Processamento concluído',
       'ERRO CRÍTICO',
       'Fallback',
       'Mensagem autorizada',
@@ -99,7 +102,7 @@ class Logger {
     ];
     
     return criticalPatterns.some(pattern => 
-      message.includes(pattern) || component.includes('ERROR') || component.includes('CRITICAL')
+      safeMessage.includes(pattern) || safeComponent.includes('ERROR') || safeComponent.includes('CRITICAL')
     );
   }
 

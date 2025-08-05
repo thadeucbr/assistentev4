@@ -97,5 +97,19 @@ export default [
             required: ['query']
           }
         }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'calendar_agent',
+          description: 'Agente especializado em gerenciamento de eventos do Google Calendar. Pode criar eventos na agenda, listar próximos compromissos e gerar arquivos iCal para que o usuário possa importar em seu próprio calendário. Use esta ferramenta quando o usuário quiser agendar reuniões, criar compromissos, marcar eventos ou gerenciar sua agenda.',
+          parameters: {
+            type: 'object',
+            properties: {
+              query: { type: 'string', description: 'A solicitação do usuário relacionada ao calendário (ex: "agendar reunião amanhã às 14h", "listar meus próximos eventos", "criar evento para sexta-feira").' }
+            },
+            required: ['query']
+          }
+        }
       }
     ];

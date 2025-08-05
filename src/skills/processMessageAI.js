@@ -42,6 +42,7 @@ import updateUserProfileSummary from './updateUserProfileSummary.js';
 import webSearch from './webSearch.js';
 import browse from './browse.js';
 import generateAudio from './generateAudio.js';
+import calendar from './calendar.js';
 import sendPtt from '../whatsapp/sendPtt.js';
 const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
 
@@ -535,6 +536,15 @@ ${searchResult.sources && searchResult.sources.length > 0 ?
 Esta informação foi obtida através de busca web automatizada${searchResult.method.includes('playwright') ? ' com navegação inteligente' : ''}.`;
           } else {
             toolResultContent = `Busca realizada para "${args.query}", mas formato de resposta inesperado: ${JSON.stringify(searchResult)}`;
+          }
+          break;
+
+        case 'calendar_agent':
+          const calendarResult = await calendar({ userId: from, query: args.query });
+          if (calendarResult.success) {
+            toolResultContent = `Solicitação de calendário processada com sucesso: ${calendarResult.message}`;
+          } else {
+            toolResultContent = `Erro ao processar solicitação de calendário: ${calendarResult.message || calendarResult.error}`;
           }
           break;
 
