@@ -2,6 +2,7 @@ services:
   app:
     build: .
     container_name: assistentev4
+    restart: unless-stopped
     ports:
       - "7250:7250"
     volumes:
