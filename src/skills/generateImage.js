@@ -1,7 +1,7 @@
 import { env } from 'process'; // eslint-disable-line no-undef
 import chatAi from '../config/ai/chat.ai.js';
 import { retryAiJsonCall } from '../utils/aiResponseUtils.js';
-import logError from '../utils/logger.js';
+import { logError } from '../utils/logger.js';
 
 const SD_API_URL = env.SDAPI_URL || 'http://127.0.0.1:7860';
 const SD_USERNAME = env.SDAPI_USR;

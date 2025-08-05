@@ -1,6 +1,6 @@
 import { connectToDb } from '../config/database/mongo.js';
 import parseScheduledTime from '../utils/parseScheduledTime.js';
-import logError from '../utils/logger.js';
+import { logError } from '../utils/logger.js';
 const COLLECTION = 'reminders';
 
 export async function getReminders(userId) {

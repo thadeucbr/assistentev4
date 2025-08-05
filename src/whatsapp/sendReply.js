@@ -1,5 +1,5 @@
 import axios from 'axios';
-import logError from '../utils/logger.js';
+import { logError } from '../utils/logger.js';
 
 const sendReply = async (to, content, quotedMsgId, sendSeen = true) => {
   const url = `${process.env.WHATSAPP_URL}/reply`;

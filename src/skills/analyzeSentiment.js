@@ -1,7 +1,7 @@
 
 import chatAi from '../config/ai/chat.ai.js';
 import { extractContent } from '../utils/aiResponseUtils.js';
-import logError from '../utils/logger.js';
+import { logError } from '../utils/logger.js';
 
 const SENTIMENT_ANALYSIS_PROMPT = {
   role: 'system',

@@ -1,6 +1,6 @@
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import logError from '../utils/logger.js';
+import { logError } from '../utils/logger.js';
 puppeteer.use(StealthPlugin());
 
 // Helper para encontrar o caminho do executável do Chrome

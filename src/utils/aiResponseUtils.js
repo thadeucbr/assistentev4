@@ -1,4 +1,4 @@
-import logError from './logger.js';
+import { logError } from './logger.js';
 
 /**
  * Função auxiliar para normalizar as respostas dos diferentes provedores de IA

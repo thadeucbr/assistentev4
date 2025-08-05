@@ -1,5 +1,5 @@
 import { MongoClient } from 'mongodb';
-import logError from '../../utils/logger.js';
+import { logError } from '../../utils/logger.js';
 
 let client;
 let db;

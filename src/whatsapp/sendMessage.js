@@ -1,5 +1,5 @@
 import axios from 'axios';
-import logError from '../utils/logger.js';
+import { logError } from '../utils/logger.js';
 import sendReply from './sendReply.js';
 
 const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];

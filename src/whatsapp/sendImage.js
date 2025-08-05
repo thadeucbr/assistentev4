@@ -1,5 +1,5 @@
 import axios from 'axios';
-import logError from '../utils/logger.js';
+import { logError } from '../utils/logger.js';
 
 export default async function sendImage(recipient, base64Image, prompt) {
     try {

@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
-import logError from '../utils/logger.js';
+import { logError } from '../utils/logger.js';
 
 // Configura o ffmpeg (usado apenas pela geração local)
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);

@@ -1,4 +1,4 @@
-import logError from '../utils/logger.js';
+import { logError } from '../utils/logger.js';
 
 /**
  * Faz uma requisição HTTP flexível (GET, POST, etc) para uma URL, podendo enviar headers e corpo customizados.

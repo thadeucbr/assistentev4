@@ -1,4 +1,4 @@
-import logError from '../utils/logger.js';
+import { logError } from '../utils/logger.js';
 
 
 const SEND_PTT_ENDPOINT = `${process.env.WHATSAPP_URL}/sendFile`;

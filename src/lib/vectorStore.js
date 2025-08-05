@@ -1,6 +1,6 @@
 import * as fs from 'fs/promises';
 import { embeddingModel } from './langchain.js';
-import logError from '../utils/logger.js';
+import { logError } from '../utils/logger.js';
 
 const VECTOR_STORE_DIR = './vector_store';
 

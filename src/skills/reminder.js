@@ -1,7 +1,7 @@
 import { getAllReminders, deleteReminder } from '../repository/reminderRepository.js';
 import sendMessage from '../whatsapp/sendMessage.js';
 import parseScheduledTime from '../utils/parseScheduledTime.js';
-import logError from '../utils/logger.js';
+import { logError } from '../utils/logger.js';
 /**
  * Inicia o agendador de lembretes, buscando os lembretes pendentes no banco e agendando
  * sua execução utilizando setTimeout. Caso o horário do lembrete já tenha passado, ele é

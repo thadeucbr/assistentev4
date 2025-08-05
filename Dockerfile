@@ -22,7 +22,7 @@ RUN npm install -g nodemon
 COPY . .
 
 # Expose port (change if your app uses a different port)
-EXPOSE 3000
+EXPOSE 7250
 
 # Start with nodemon for hot-reload
 CMD ["nodemon", "index.js"]

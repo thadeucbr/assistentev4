@@ -2,7 +2,7 @@ import { ChromaClient } from 'chromadb';
 import 'dotenv/config'; // Carrega as variáveis de ambiente
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { Chroma } from '@langchain/community/vectorstores/chroma';
-import logError from './src/utils/logger.js';
+import { logError } from './src/utils/logger.js';
 
 async function testChromaConnection() {
   const host = process.env.CHROMA_HOST;

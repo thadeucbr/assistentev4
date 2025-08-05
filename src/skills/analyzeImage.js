@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import logError from '../utils/logger.js';
+import { logError } from '../utils/logger.js';
 
 async function getBase64Image(id) {
   if (!id) {

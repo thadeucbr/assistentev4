@@ -1,5 +1,5 @@
 import axios from 'axios';
-import logError from '../utils/logger.js';
+import { logError } from '../utils/logger.js';
 
 const WHATSAPP_URL = process.env.WHATSAPP_URL;
 const WHATSAPP_SECRET = process.env.WHATSAPP_SECRET;
