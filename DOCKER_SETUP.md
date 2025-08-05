@@ -92,5 +92,19 @@ docker restart assistentev4
 - ✅ Container configurado com `restart: unless-stopped`
 - ✅ Conectividade entre containers configurada
 - ✅ Variáveis de ambiente atualizadas
+- ✅ Playwright Chromium instalado automaticamente na imagem Docker
+
+### 7. Playwright Configuration
+
+O Dockerfile foi configurado para instalar automaticamente o Playwright Chromium durante a construção da imagem. Isso inclui:
+
+- **Dependências do sistema:** Bibliotecas necessárias para execução do Chromium
+- **Instalação automática:** `npx playwright install chromium` executado durante o build
+- **Teste de funcionamento:** Testado e validado dentro do container
+
+#### Testar Playwright no container:
+```bash
+docker exec assistentev4 node -e "const { chromium } = require('playwright'); (async () => { const browser = await chromium.launch({ headless: true }); const page = await browser.newPage(); await page.goto('https://example.com'); console.log('Título:', await page.title()); await browser.close(); })()"
+```
 
 **Status:** Configuração completa e funcional! 🚀
