@@ -337,6 +337,12 @@ export default async function processMessage(message) {
           logger.debug('ProcessMessage', 'Send_message detectado na última resposta - encerrando ciclo de ferramentas');
           break;
         }
+        
+        // Se executamos ferramentas que não são send_message, também encerrar ciclo
+        if (lastResponse.tool_calls && lastResponse.tool_calls.some(tc => tc.function.name !== 'send_message')) {
+          logger.debug('ProcessMessage', 'Ferramentas não-send_message executadas - encerrando ciclo para evitar duplicatas');
+          break;
+        }
       } else if (lastResponse.tool_calls && lastResponse.tool_calls.length > 0) {
         // Fallback: garantir que toda tool_call tenha uma mensagem tool, mesmo se não houver execução
         for (const toolCall of lastResponse.tool_calls) {
@@ -444,17 +450,27 @@ async function toolCall(messages, response, tools, from, id, userContent) {
     return messages;
   }
 
-  logger.debug('ToolCall', `Executando ${response.message.tool_calls.length} ferramenta(s) sequencialmente...`);
+  logger.info('ToolCall', `Executando ${response.message.tool_calls.length} ferramenta(s) sequencialmente...`);
+  logger.info('ToolCall', `Tool calls detectadas: ${response.message.tool_calls.map(tc => `${tc.id}:${tc.function.name}`).join(', ')}`);
 
   // Coletar todas as respostas das ferramentas primeiro
   const toolResponses = [];
+  const executedToolCallIds = new Set(); // Controle para evitar execução duplicada
   
   for (const toolCall of response.message.tool_calls) {
     const toolName = toolCall.function.name;
     let toolResultContent = '';
     let actualToolName = toolName;
 
-    logger.debug('ToolCall', `Processando tool_call: ${toolCall.id} - ${toolName}`);
+    logger.info('ToolCall', `Processando tool_call: ${toolCall.id} - ${toolName}`);
+
+    // Verificar se já executamos esta tool_call
+    if (executedToolCallIds.has(toolCall.id)) {
+      logger.warn('ToolCall', `Tool call ${toolCall.id} já foi executada, pulando para evitar duplicatas`);
+      continue;
+    }
+    
+    executedToolCallIds.add(toolCall.id);
 
     try {
       const args = JSON.parse(toolCall.function.arguments);
@@ -468,8 +484,12 @@ async function toolCall(messages, response, tools, from, id, userContent) {
       switch (actualToolName) {
         case 'image_generation_agent':
           const image = await generateImage({ ...args });
-          toolResultContent = image.error ? `Erro ao gerar imagem: ${image.error}` : `Image generated and sent: "${args.prompt}"`;
-          if (!image.error) await sendImage(from, image, args.prompt);
+          if (image && typeof image === 'string') {
+            await sendImage(from, image, args.prompt);
+            toolResultContent = `Image generated and sent: "${args.prompt}"`;
+          } else {
+            toolResultContent = `Erro ao gerar imagem: ${image === false ? 'Falha na geração' : 'Erro desconhecido'}`;
+          }
           break;
 
         case 'send_message':
@@ -627,13 +647,19 @@ Esta informação foi obtida através de busca web automatizada${searchResult.me
   const sanitizedToolMessages = sanitizeMessagesForChat(newMessages);
   logger.debug('ToolCall', `Mensagens sanitizadas para tool call: ${newMessages.length} -> ${sanitizedToolMessages.length}`);
   
-  // Verificar se já executamos send_message - se sim, não chamar a IA novamente
+  // Verificar se executamos qualquer ferramenta que não seja send_message - se sim, parar aqui
+  const executedNonSendMessageTools = response.message.tool_calls.filter(tc => 
+    tc.function.name !== 'send_message'
+  );
+  
   const alreadyExecutedSendMessage = toolResponses.some(tr => 
     tr.content && tr.content.includes('Mensagem enviada ao usuário:')
   );
   
-  if (alreadyExecutedSendMessage) {
-    logger.info('ToolCall', 'Send_message já executado - parando aqui para evitar duplicatas');
+  // Se executamos ferramentas que não são send_message OU já executamos send_message, parar aqui
+  if (executedNonSendMessageTools.length > 0 || alreadyExecutedSendMessage) {
+    const executedToolNames = executedNonSendMessageTools.map(tc => tc.function.name).join(', ');
+    logger.info('ToolCall', `Ferramentas executadas (${executedToolNames || 'send_message'}) - parando aqui para evitar duplicatas e loops`);
     logger.timing('ToolCall', `Execução de ferramentas concluída. Tempo total: ${Date.now() - toolStartTime}ms`);
     return newMessages;
   }

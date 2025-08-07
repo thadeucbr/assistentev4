@@ -61,16 +61,16 @@ export async function generateImageWithOpenAITool(prompt, options = {}) {
       messages: [
         {
           role: 'system',
-          content: 'You are a helpful assistant that can generate images. When asked to generate an image, use the generate_image function to create it.'
+          content: 'You are an AI assistant specialized in image generation. When a user requests an image, you MUST use the generate_image function to create it. Always call the generate_image function for any image generation request.'
         },
         {
           role: 'user',
-          content: `Please generate an image with this description: ${prompt}`
+          content: `Generate an image: ${prompt}`
         }
       ],
       tools: [imageGenerationTool],
-      tool_choice: 'auto',
-      max_completion_tokens: 1000
+      tool_choice: {"type": "function", "function": {"name": "generate_image"}},
+      max_completion_tokens: 2000
     };
 
     console.log('Fazendo requisição para OpenAI com function calling...');
@@ -95,8 +95,16 @@ export async function generateImageWithOpenAITool(prompt, options = {}) {
 
     // Verificar se houve chamada de ferramenta
     const message = data.choices?.[0]?.message;
+    
     if (!message) {
       throw new Error('Resposta inválida da OpenAI API - mensagem não encontrada');
+    }
+
+    // Debug para casos onde tool_calls não funciona
+    if (!message.tool_calls && data.choices?.[0]?.finish_reason === 'length') {
+      console.log('⚠️ Modelo atingiu limite de tokens antes de fazer function call');
+      console.log('Completion tokens usados:', data.usage?.completion_tokens);
+      console.log('Reasoning tokens:', data.usage?.completion_tokens_details?.reasoning_tokens);
     }
 
     if (message.tool_calls && message.tool_calls.length > 0) {

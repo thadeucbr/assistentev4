@@ -204,23 +204,12 @@ export default async function generateImage({
       
       const toolResult = await generateImageWithOpenAITool(userPrompt);
       
-      if (toolResult.success) {
-        imageResult = toolResult.imageBase64;
-        console.log('Imagem gerada com sucesso usando ferramenta nativa da OpenAI');
-      } else {
-        console.log('Ferramenta nativa da OpenAI falhou, tentando fallback para DALL-E');
-        
-        const dalleResult = await generateImageWithDallE({
-          prompt: userPrompt
-        });
-
-        if (!dalleResult.success) {
-          throw new Error(`OpenAI native tool falhou: ${toolResult.error}. DALL-E fallback também falhou: ${dalleResult.error}`);
-        }
-
-        imageResult = dalleResult.imageBase64;
-        console.log('Imagem gerada com sucesso usando DALL-E (fallback)');
+      if (!toolResult.success) {
+        throw new Error(`OpenAI native tool falhou: ${toolResult.error}`);
       }
+      
+      imageResult = toolResult.imageBase64;
+      console.log('Imagem gerada com sucesso usando ferramenta nativa da OpenAI');
       
     } else if (imageProvider === 'openai-dalle') {
       console.log('Usando OpenAI DALL-E para geração de imagem');
@@ -230,34 +219,23 @@ export default async function generateImage({
       });
 
       if (!dalleResult.success) {
-        throw new Error(dalleResult.error);
+        throw new Error(`DALL-E falhou: ${dalleResult.error}`);
       }
 
       imageResult = dalleResult.imageBase64;
       console.log('Imagem gerada com sucesso usando DALL-E');
       
     } else if (imageProvider === 'openai-gpt5-nano') {
-      console.log('Tentando usar GPT-5-nano para geração de imagem');
+      console.log('Usando GPT-5-nano para geração de imagem');
       
       const gpt5Result = await generateImageWithGPT5Nano(userPrompt);
       
-      if (gpt5Result.success) {
-        imageResult = gpt5Result.imageBase64;
-        console.log('Imagem gerada com sucesso usando GPT-5-nano diretamente');
-      } else {
-        console.log('GPT-5-nano não conseguiu gerar a imagem, usando fallback para DALL-E');
-        
-        const dalleResult = await generateImageWithDallE({
-          prompt: userPrompt
-        });
-
-        if (!dalleResult.success) {
-          throw new Error(`GPT-5-nano falhou: ${gpt5Result.error}. DALL-E fallback também falhou: ${dalleResult.error}`);
-        }
-
-        imageResult = dalleResult.imageBase64;
-        console.log('Imagem gerada com sucesso usando DALL-E (fallback)');
+      if (!gpt5Result.success) {
+        throw new Error(`GPT-5-nano falhou: ${gpt5Result.error}`);
       }
+      
+      imageResult = gpt5Result.imageBase64;
+      console.log('Imagem gerada com sucesso usando GPT-5-nano diretamente');
       
     } else {
       // Default para Stable Diffusion
