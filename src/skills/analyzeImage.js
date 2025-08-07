@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { logError } from '../utils/logger.js';
+import { analyzeImageWithOpenAIVision } from '../services/OpenAIVisionService.js';
 
 async function getBase64Image(id) {
   if (!id) {
@@ -36,9 +37,16 @@ async function getBase64Image(id) {
 }
 
 async function analyzeImageWithOllama(base64Image, prompt) {
+  console.log('Usando Ollama para análise de imagem (processamento local)...');
+  
   const endpoint = process.env.OLLAMA_ANALYZE_URL || 'http://localhost:11434/api/generate';
+  const model = process.env.OLLAMA_IMAGE_ANALYZE_MODEL || process.env.OLLAMA_ANALYZE_MODEL || 'llava';
+  
+  console.log(`Endpoint Ollama: ${endpoint}`);
+  console.log(`Modelo Ollama: ${model}`);
+  
   const payload = {
-    model: process.env.OLLAMA_ANALYZE_MODEL || 'llava',
+    model: model,
     prompt: prompt,
     stream: false,
     images: [base64Image.replace('data:image/jpeg;base64,', '')]
@@ -60,49 +68,15 @@ async function analyzeImageWithOllama(base64Image, prompt) {
 }
 
 async function analyzeImageWithOpenAI(base64Image, prompt) {
-  const OPENAI_URL = process.env.OPENAI_URL || 'https://api.openai.com/v1/chat/completions';
-  const OPENAI_MODEL = 'gpt-4o-mini'; // ou outro modelo de visão da OpenAI
-  const OPENAI_KEY = process.env.OPENAI_API_KEY;
-
-  if (!OPENAI_KEY) {
-    throw new Error('Missing OPENAI_API_KEY environment variable');
+  console.log('Usando OpenAI Vision Service para análise de imagem...');
+  
+  const result = await analyzeImageWithOpenAIVision(base64Image, prompt);
+  
+  if (result.success) {
+    return result.content;
+  } else {
+    throw new Error(result.error || 'Falha na análise com OpenAI Vision');
   }
-
-  const payload = {
-    model: OPENAI_MODEL,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: prompt },
-          {
-            type: 'image_url',
-            image_url: {
-              url: base64Image
-            }
-          }
-        ]
-      }
-    ],
-    max_tokens: 300
-  };
-
-  const res = await fetch(OPENAI_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENAI_KEY}`
-    },
-    body: JSON.stringify(payload)
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`OpenAI chat failed: ${res.status} ${errText}`);
-  }
-
-  const json = await res.json();
-  return json.choices[0].message.content;
 }
 
 export default async function analyzeImage({ id, prompt = 'Descreva detalhadamente tudo o que está presente nesta imagem, se houver, transcreva todos os textos visíveis na imagem.' }) {
@@ -113,11 +87,16 @@ export default async function analyzeImage({ id, prompt = 'Descreva detalhadamen
       return 'Error: Could not retrieve image data.';
     }
 
-    const provider = process.env.AI_PROVIDER;
+    // Usar a nova variável de ambiente específica para análise de imagem
+    const provider = process.env.IMAGE_ANALYSIS_PROVIDER || process.env.AI_PROVIDER;
+    
+    console.log(`Using image analysis provider: ${provider}`);
 
     if (provider === 'openai') {
+      console.log('Usando OpenAI para análise de imagem (processamento remoto)');
       return await analyzeImageWithOpenAI(base64Image, prompt);
     } else {
+      console.log('Usando Ollama para análise de imagem (processamento local)');
       // Default to ollama if provider is not openai or not set
       return await analyzeImageWithOllama(base64Image, prompt);
     }
