@@ -182,6 +182,14 @@ export default class MCPToolExecutor {
         }
         break;
         
+      case 'image_generation':
+        // Para image_generation, sempre incluir destinatário para envio automático
+        adaptedArgs.from = from;
+        if (messageData?.id) {
+          adaptedArgs.quotedMsgId = messageData.id;
+        }
+        break;
+        
       case 'user_profile_update':
         adaptedArgs.userId = from;
         break;
@@ -210,6 +218,20 @@ export default class MCPToolExecutor {
         lastError = error;
         logger.warn('MCPToolExecutor', `⚠️ Tentativa ${attempt}/${maxRetries} falhou para "${toolName}": ${error.message}`);
         
+        // Se é erro de buffer overflow, não tentar novamente - é inútil
+        if (error.message.includes('maxBuffer length exceeded') || 
+            error.message.includes('stdout maxBuffer') || 
+            error.message.includes('Buffer overflow')) {
+          logger.error('MCPToolExecutor', `🚫 Buffer overflow detectado para "${toolName}" - interrompendo tentativas`);
+          throw new Error(`Buffer overflow: A resposta da ferramenta "${toolName}" é muito grande. Isso geralmente acontece com imagens em base64. A ferramenta deve ser otimizada para não retornar dados grandes.`);
+        }
+        
+        // Se é erro de timeout muito longo, não tentar novamente imediatamente
+        if (error.message.includes('timeout') || error.message.includes('ETIMEDOUT')) {
+          logger.error('MCPToolExecutor', `⏱️ Timeout detectado para "${toolName}" - interrompendo tentativas`);
+          throw new Error(`Timeout: A ferramenta "${toolName}" demorou muito para responder.`);
+        }
+        
         if (attempt < maxRetries) {
           // Aguardar antes da próxima tentativa
           await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
@@ -230,12 +252,22 @@ export default class MCPToolExecutor {
       return `⏳ Temporariamente indisponível devido ao limite de uso da API. Tente novamente em alguns segundos.`;
     }
     
-    if (errorMessage.includes('timeout')) {
+    if (errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT')) {
       return `⏱️ A operação demorou mais que o esperado e foi cancelada. Tente uma consulta mais simples.`;
+    }
+    
+    if (errorMessage.includes('maxBuffer length exceeded') || 
+        errorMessage.includes('stdout maxBuffer') || 
+        errorMessage.includes('Buffer overflow')) {
+      return `📋 A resposta foi muito grande para ser processada. ${toolName === 'image_generation' ? 'A imagem foi processada diretamente.' : 'Tente uma operação mais simples.'}`;
     }
     
     if (errorMessage.includes('Resposta válida não encontrada')) {
       return `🔧 Problema na comunicação interna. A operação será processada novamente automaticamente.`;
+    }
+    
+    if (toolName === 'image_generation' && errorMessage.includes('Cannot find module')) {
+      return `🎨 Problema na configuração do gerador de imagens. Verifique se todos os módulos estão instalados.`;
     }
     
     return `❌ Erro ao executar ${toolName}: ${errorMessage}`;

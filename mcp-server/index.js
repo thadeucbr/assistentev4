@@ -68,11 +68,6 @@ class AssistenteMCPServer {
                 prompt: {
                   type: 'string',
                   description: 'Text prompt describing the image to generate'
-                },
-                model: {
-                  type: 'string',
-                  description: 'Image generation model to use (optional)',
-                  enum: ['dall-e-3', 'dall-e-2', 'openai-native-tool', 'ollama']
                 }
               },
               required: ['prompt']

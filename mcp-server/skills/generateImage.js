@@ -187,17 +187,19 @@ export default async function generateImage({
   steps = 30, 
   width = 512, 
   height = 512, 
-  pag_scale = 7.5 
+  pag_scale = 7.5,
+  from = null // Parâmetro para identificar o destinatário (contexto MCP)
 }) {
+  // Obter o provedor de imagem das variáveis de ambiente (fora do try para estar disponível no catch)
+  const imageProvider = env.IMAGE_PROVIDER || 'stable-diffusion';
+  
   try {
     console.log('Iniciando geração de imagem...');
     console.log('Prompt do usuário:', userPrompt);
-    
-    // Obter o provedor de imagem das variáveis de ambiente
-    const imageProvider = env.IMAGE_PROVIDER || 'stable-diffusion';
     console.log('Provedor de imagem:', imageProvider);
 
     let imageResult;
+    let generationDetails = {};
 
     if (imageProvider === 'openai-native-tool') {
       console.log('Usando ferramenta nativa de geração de imagem da OpenAI');
@@ -209,6 +211,11 @@ export default async function generateImage({
       }
       
       imageResult = toolResult.imageBase64;
+      generationDetails = {
+        method: 'OpenAI Native Tool',
+        model: toolResult.model || 'gpt-5-nano-2025-08-07',
+        revisedPrompt: toolResult.revisedPrompt
+      };
       console.log('Imagem gerada com sucesso usando ferramenta nativa da OpenAI');
       
     } else if (imageProvider === 'openai-dalle') {
@@ -223,6 +230,13 @@ export default async function generateImage({
       }
 
       imageResult = dalleResult.imageBase64;
+      generationDetails = {
+        method: 'OpenAI DALL-E',
+        model: dalleResult.model || 'dall-e-3',
+        revisedPrompt: dalleResult.revisedPrompt,
+        quality: dalleResult.quality,
+        size: dalleResult.size
+      };
       console.log('Imagem gerada com sucesso usando DALL-E');
       
     } else if (imageProvider === 'openai-gpt5-nano') {
@@ -235,6 +249,10 @@ export default async function generateImage({
       }
       
       imageResult = gpt5Result.imageBase64;
+      generationDetails = {
+        method: 'GPT-5-nano Direct',
+        model: 'gpt-5-nano-2025-08-07'
+      };
       console.log('Imagem gerada com sucesso usando GPT-5-nano diretamente');
       
     } else {
@@ -252,14 +270,86 @@ export default async function generateImage({
         pag_scale
       });
       
+      generationDetails = {
+        method: 'Stable Diffusion',
+        model: 'Local SD',
+        settings: { steps, width, height, seed, pag_scale }
+      };
       console.log('Imagem gerada com sucesso usando Stable Diffusion');
     }
 
-    return imageResult;
+    // SEMPRE enviar a imagem via WhatsApp se temos resultado
+    if (imageResult) {
+      console.log('Enviando imagem gerada via WhatsApp...');
+      
+      try {
+        // Importar a função de envio de imagem
+        const { default: sendImage } = await import('../whatsapp/sendImage.js');
+        
+        // Determinar o destinatário
+        const recipient = from || process.env.DEFAULT_WHATSAPP_RECIPIENT || '5511971704940@c.us';
+        
+        // Preparar caption com detalhes da geração
+        let caption = `🎨 *Imagem Gerada*\n\n`;
+        caption += `📝 *Prompt:* ${userPrompt}\n`;
+        caption += `🤖 *Método:* ${generationDetails.method}\n`;
+        if (generationDetails.model) {
+          caption += `⚙️ *Modelo:* ${generationDetails.model}\n`;
+        }
+        if (generationDetails.revisedPrompt && generationDetails.revisedPrompt !== userPrompt) {
+          caption += `✨ *Prompt otimizado:* ${generationDetails.revisedPrompt}\n`;
+        }
+        
+        // Enviar a imagem
+        const sendResult = await sendImage(recipient, imageResult, caption);
+        
+        if (sendResult) {
+          console.log('Imagem enviada com sucesso via WhatsApp');
+          return {
+            success: true,
+            sent: true,
+            recipient: recipient,
+            description: `✅ Imagem gerada e enviada com sucesso! A imagem foi criada usando ${generationDetails.method} e enviada para ${recipient}. Não é necessário tentar gerar novamente.`,
+            prompt: userPrompt,
+            generationDetails: generationDetails,
+            provider: imageProvider,
+            // NÃO retornar imageBase64 para evitar buffer overflow
+            note: 'Imagem enviada via WhatsApp - base64 não retornado para evitar overflow',
+            // Sinal para o sistema parar de tentar
+            completed: true,
+            action_completed: true
+          };
+        } else {
+          throw new Error('Falha no envio via WhatsApp');
+        }
+        
+      } catch (sendError) {
+        logError(sendError, 'generateImage - Failed to send image via WhatsApp');
+        console.error('Erro ao enviar imagem via WhatsApp:', sendError);
+        return {
+          success: false,
+          sent: false,
+          error: `Imagem gerada mas falha no envio: ${sendError.message}`,
+          description: `Imagem foi gerada usando ${generationDetails.method}, mas não foi possível enviar`,
+          prompt: userPrompt,
+          generationDetails: generationDetails,
+          provider: imageProvider
+        };
+      }
+    } else {
+      throw new Error('Nenhuma imagem foi gerada');
+    }
 
   } catch (err) {
     logError(err, 'generateImage - Failed to generate image');
     console.error('Erro ao gerar imagem:', err);
-    return false;
+    return {
+      success: false,
+      sent: false,
+      error: err.message,
+      description: `Falha na geração de imagem usando ${imageProvider}: ${err.message}`,
+      prompt: userPrompt,
+      provider: imageProvider || 'unknown'
+    };
   }
 }

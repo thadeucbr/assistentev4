@@ -69,23 +69,58 @@ export async function safeSendPtt(args) {
 export async function safeGenerateImage(args) {
   try {
     const { default: generateImage } = await import('./skills/generateImage.js');
-    const result = await generateImage(args);
+    
+    // IMPORTANTE: Remover o argumento 'model' se vier do MCP para garantir
+    // que o IMAGE_PROVIDER do .env sempre tenha prioridade
+    const { model, ...cleanArgs } = args;
+    
+    if (model) {
+      console.log(`🚫 Argumento 'model: ${model}' ignorado - usando IMAGE_PROVIDER do .env`);
+    }
+    
+    // Incluir o parâmetro 'from' que pode vir do contexto MCP
+    const imageArgs = {
+      ...cleanArgs,
+      from: cleanArgs.from || cleanArgs.recipient || process.env.DEFAULT_WHATSAPP_RECIPIENT
+    };
+    
+    console.log(`🎨 Iniciando geração de imagem com IMAGE_PROVIDER: ${process.env.IMAGE_PROVIDER || 'stable-diffusion'}`);
+    
+    const result = await generateImage(imageArgs);
     
     return {
-      success: true,
-      message: 'Geração de imagem executada com sucesso',
-      result: result,
-      prompt: args.prompt,
-      note: 'Imagem gerada via MCP'
+      success: result.success,
+      message: result.sent ? 
+        `✅ ${result.description}` : 
+        `❌ ${result.error || result.description || 'Falha na geração'}`,
+      result: {
+        sent: result.sent || false,
+        description: result.description,
+        prompt: result.prompt,
+        provider: result.provider,
+        generationDetails: result.generationDetails || null,
+        completed: result.completed || result.action_completed || false
+      },
+      sent: result.sent || false,
+      completed: result.completed || result.action_completed || false,
+      note: result.note || (result.sent ? 
+        '✅ Imagem gerada e enviada via WhatsApp através do MCP - Tarefa completada' : 
+        'Falha na geração ou envio da imagem')
     };
   } catch (error) {
     console.error('Erro na geração de imagem via MCP:', error);
     return {
       success: false,
       error: 'Geração de imagem falhou no MCP',
-      message: error.message,
-      prompt: args.prompt,
-      note: 'Funcionalidade requer configuração completa do Stable Diffusion'
+      message: `❌ Erro: ${error.message}`,
+      result: {
+        sent: false,
+        description: 'Falha completa na geração de imagem',
+        prompt: args.prompt,
+        provider: 'unknown'
+      },
+      sent: false,
+      note: 'Funcionalidade requer configuração completa do Stable Diffusion ou outros provedores'
     };
   }
 }

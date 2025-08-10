@@ -274,6 +274,80 @@ class MessageProcessor {
         // Verificar se tools foram executadas com sucesso (evitar loop infinito apenas para ferramentas bem-sucedidas)
         const toolNames = lastResponse.tool_calls?.map(tc => tc.function.name) || [];
         
+        // Verificar se há uma geração de imagem bem-sucedida para O MESMO PROMPT
+        const hasSuccessfulImageGeneration = messages.slice(-5).some(msg => 
+          msg.role === 'tool' && 
+          msg.content && 
+          msg.content.includes('"success": true') && 
+          msg.content.includes('"sent": true') &&
+          (msg.content.includes('image_generation') || msg.content.includes('Imagem gerada e enviada'))
+        );
+        
+        // Se há image_generation sendo solicitada, verificar se é o mesmo prompt já executado
+        const hasRecentImageGeneration = toolNames.includes('image_generation');
+        
+        if (hasRecentImageGeneration) {
+          // Obter o prompt atual da solicitação
+          const currentImagePrompt = lastResponse.tool_calls
+            .filter(tc => tc.function.name === 'image_generation')
+            .map(tc => {
+              try {
+                const args = JSON.parse(tc.function.arguments);
+                return args.prompt;
+              } catch (e) {
+                return null;
+              }
+            })[0];
+
+          if (currentImagePrompt) {
+            // Verificar se há múltiplas tentativas do mesmo prompt neste ciclo (loop imediato)
+            const currentCycleImageCalls = lastResponse.tool_calls
+              .filter(tc => tc.function.name === 'image_generation')
+              .map(tc => {
+                try { return JSON.parse(tc.function.arguments).prompt; } 
+                catch (e) { return null; }
+              })
+              .filter(p => p && p === currentImagePrompt);
+
+            const isImmediateLoop = currentCycleImageCalls.length > 1;
+            
+            // Verificar se o MESMO PROMPT foi solicitado nas últimas 5 mensagens (loop recente)
+            const recentMessages = messages.slice(-5);
+            const samePromptInRecentCycle = recentMessages.some(msg => 
+              msg.role === 'assistant' && 
+              msg.tool_calls && 
+              msg.tool_calls.some(tc => {
+                if (tc.function.name === 'image_generation') {
+                  try {
+                    const args = JSON.parse(tc.function.arguments);
+                    return args.prompt === currentImagePrompt;
+                  } catch (e) {
+                    return false;
+                  }
+                }
+                return false;
+              })
+            );
+
+            if (isImmediateLoop || samePromptInRecentCycle) {
+              logger.debug('MessageProcessor', `🖼️ LOOP imediato detectado - prompt "${currentImagePrompt.substring(0, 50)}..." executado muito recentemente - pulando duplicação`);
+              // Remover apenas as tool_calls duplicadas de image_generation
+              lastResponse.tool_calls = lastResponse.tool_calls.filter(tc => 
+                !(tc.function.name === 'image_generation' && 
+                  JSON.parse(tc.function.arguments).prompt === currentImagePrompt)
+              );
+              
+              // Se não há outras tools para executar, pular este ciclo
+              if (lastResponse.tool_calls.length === 0) {
+                logger.debug('MessageProcessor', '✅ Loop de image_generation resolvido - finalizando ciclo');
+                break;
+              }
+            } else {
+              logger.debug('MessageProcessor', `🖼️ Nova solicitação de imagem detectada, permitindo execução: "${currentImagePrompt.substring(0, 50)}..."`);
+            }
+          }
+        }
+        
         // Permitir re-tentativas se:
         // 1. É o primeiro ciclo (toolCycleCount === 0)
         // 2. Há novas ferramentas que nunca foram tentadas
