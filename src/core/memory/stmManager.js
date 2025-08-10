@@ -61,9 +61,15 @@ export default class STMManager {
       if (messagesToSummarize.length > 0) {
         logger.debug('STMManager', 'Sumarizando mensagens antigas para LTM...');
         const summaryContent = messagesToSummarize.map(m => m.content).join('\n');
+        
+        // Limitar o tamanho do conteúdo antes de sumarizar (aprox. 6000 tokens = 24000 chars)
+        const limitedContent = summaryContent.length > 24000 
+          ? summaryContent.substring(0, 24000) + '\n[...conteúdo truncado...]'
+          : summaryContent;
+          
         const summaryResponse = await chatModel.invoke([
           { role: 'system', content: 'Resuma o seguinte trecho de conversa de forma concisa, focando nos fatos e informações importantes.' },
-          { role: 'user', content: summaryContent }
+          { role: 'user', content: limitedContent }
         ]);
         LtmService.summarizeAndStore(userId, summaryResponse.content)
             .catch(err => logger.error('STMManager', `Erro ao sumarizar para LTM em background: ${err}`));

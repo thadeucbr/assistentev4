@@ -146,6 +146,8 @@ class MessageProcessor {
 
     // Executar ciclo de ferramentas
     logger.debug('MessageProcessor', '🔧 Iniciando ciclo de ferramentas...');
+    logger.debug('MessageProcessor', `🔧 Response tem tool_calls: ${response.message.tool_calls?.length || 0}`);
+    logger.debug('MessageProcessor', `🔧 Chamando _executeToolCycle...`);
     await this._executeToolCycle(messages, response, tools, data, userContent, imageAnalysisResult);
     logger.debug('MessageProcessor', '🔧 Ciclo de ferramentas concluído');
 
@@ -157,7 +159,14 @@ class MessageProcessor {
 
     // Atualizações assíncronas em background
     logger.debug('MessageProcessor', '📚 Iniciando atualizações assíncronas em background...');
-    LtmService.summarizeAndStore(userId, messages.map((m) => m.content).join('\n'))
+    
+    // Limitar o texto para LTM a um tamanho razoável (aprox. 6000 tokens = 24000 chars)
+    const conversationText = messages.map((m) => m.content).join('\n');
+    const limitedText = conversationText.length > 24000 
+      ? conversationText.substring(conversationText.length - 24000) 
+      : conversationText;
+      
+    LtmService.summarizeAndStore(userId, limitedText)
         .catch(err => logger.error('MessageProcessor', `Erro ao armazenar na LTM em background: ${err}`));
 
     updateUserProfileSummary(userId, messages)
@@ -189,9 +198,13 @@ class MessageProcessor {
    * @private
    */
   static async _executeToolCycle(messages, response, tools, data, userContent, imageAnalysisResult) {
+    logger.debug('MessageProcessor', '🎬 === ENTRANDO EM _executeToolCycle ===');
     let toolCycleCount = 0;
     const MAX_TOOL_CYCLES = 3;
     let lastResponse = response.message;
+    
+    // Rastrear tools executadas para evitar loops
+    const executedTools = new Set();
     
     logger.debug('MessageProcessor', `🔧 Iniciando ciclo de ferramentas - Response: ${lastResponse.content ? 'com conteúdo' : 'sem conteúdo'}, Tool calls: ${lastResponse.tool_calls?.length || 0}`);
     
@@ -204,6 +217,15 @@ class MessageProcessor {
       if ((lastResponse.tool_calls && lastResponse.tool_calls.length > 0) || lastResponse.function_call) {
         logger.debug('MessageProcessor', `🛠️ Executando ${lastResponse.tool_calls?.length || 1} ferramenta(s)...`);
         
+        // Verificar se todas as tools já foram executadas (evitar loop infinito)
+        const toolNames = lastResponse.tool_calls?.map(tc => tc.function.name) || [];
+        const newTools = toolNames.filter(toolName => !executedTools.has(toolName));
+        
+        if (newTools.length === 0 && toolCycleCount > 0) {
+          logger.warn('MessageProcessor', '🔄 Todas as tools já foram executadas - evitando loop infinito');
+          break;
+        }
+        
         const updatedMessages = await hybridExecutor.executeTools(
           messages, 
           { message: lastResponse }, 
@@ -215,26 +237,60 @@ class MessageProcessor {
           imageAnalysisResult
         );
         
+        // Registrar tools executadas
+        toolNames.forEach(toolName => executedTools.add(toolName));
+        
         logger.debug('MessageProcessor', `📨 Mensagens atualizadas: ${updatedMessages.length} total`);
+        logger.debug('MessageProcessor', `🔍 Tools executadas até agora: ${Array.from(executedTools).join(', ')}`);
+        
+        // DEBUG: Verificar estrutura das mensagens após execução das tools
+        const lastMessages = updatedMessages.slice(-5);
+        logger.debug('MessageProcessor', '🔍 DEBUG - Últimas 5 mensagens após execução das tools:');
+        lastMessages.forEach((msg, index) => {
+          logger.debug('MessageProcessor', `  ${index}: role=${msg.role}, content="${msg.content?.substring(0, 50) || 'null'}...", tool_calls=${msg.tool_calls?.length || 0}, tool_call_id=${msg.tool_call_id || 'undefined'}`);
+        });
         
         // Atualizar referência das mensagens
         messages.length = 0;
         messages.push(...updatedMessages);
         
-        // Buscar a última mensagem assistant gerada
-        const lastAssistantMsg = messages.filter(m => m.role === 'assistant').slice(-1)[0];
-        if (lastAssistantMsg) {
-          lastResponse = lastAssistantMsg;
-          logger.debug('MessageProcessor', `🤖 Nova resposta assistant encontrada com ${lastAssistantMsg.tool_calls?.length || 0} tool calls`);
-        } else {
-          logger.debug('MessageProcessor', '❌ Nenhuma mensagem assistant encontrada - encerrando ciclo');
-          break;
-        }
+        // Verificar se alguma das tools executadas foi send_message
+        const hasSendMessage = lastResponse.tool_calls?.some(tc => tc.function.name === 'send_message');
         
-        // Verificar condições de parada
-        if (this._shouldStopToolCycle(lastResponse)) {
-          logger.debug('MessageProcessor', '🛑 Condição de parada atingida');
+        logger.debug('MessageProcessor', `🔍 Verificando send_message: hasSendMessage=${hasSendMessage}, executedTools.has('send_message')=${executedTools.has('send_message')}`);
+        
+        if (hasSendMessage) {
+          logger.debug('MessageProcessor', '✅ Send_message executado - finalizando ciclo');
           break;
+        } else if (executedTools.has('send_message')) {
+          logger.debug('MessageProcessor', '✅ Send_message já foi executado anteriormente - finalizando ciclo');
+          break;
+        } else {
+          logger.debug('MessageProcessor', '🔄 Tools executadas, fazendo nova chamada à IA para possível send_message');
+          
+          // Fazer nova chamada à IA para que possa decidir próximos passos
+          try {
+            logger.debug('MessageProcessor', `📝 Mensagens antes da nova chamada IA: ${messages.length} total`);
+            const aiResponse = await chatAi(messages, tools);
+            messages.push({
+              role: 'assistant',
+              content: aiResponse.message.content || '',
+              tool_calls: aiResponse.message.tool_calls || []
+            });
+            
+            lastResponse = aiResponse.message;
+            logger.debug('MessageProcessor', `🤖 Nova resposta da IA com ${lastResponse.tool_calls?.length || 0} tool calls`);
+            logger.debug('MessageProcessor', `🤖 Conteúdo da resposta: "${lastResponse.content?.substring(0, 100)}..."`);
+            
+            // Verificar condições de parada
+            if (this._shouldStopToolCycle(lastResponse)) {
+              logger.debug('MessageProcessor', '🛑 Condição de parada atingida após nova chamada IA');
+              break;
+            }
+          } catch (error) {
+            logger.error('MessageProcessor', 'Erro ao fazer nova chamada à IA:', error);
+            break;
+          }
         }
       } else if (lastResponse.tool_calls && lastResponse.tool_calls.length > 0) {
         // Fallback: garantir que toda tool_call tenha uma mensagem tool
@@ -259,16 +315,20 @@ class MessageProcessor {
    * @private
    */
   static _shouldStopToolCycle(lastResponse) {
+    // Parar apenas se send_message foi executado (resposta final ao usuário)
     if (lastResponse.tool_calls && lastResponse.tool_calls.some(tc => tc.function.name === 'send_message')) {
       logger.debug('MessageProcessor', 'Send_message detectado - encerrando ciclo de ferramentas');
       return true;
     }
     
-    if (lastResponse.tool_calls && lastResponse.tool_calls.some(tc => tc.function.name !== 'send_message')) {
-      logger.debug('MessageProcessor', 'Ferramentas não-send_message executadas - encerrando ciclo para evitar duplicatas');
-      return true;
+    // Não há tool_calls - pode continuar para permitir novas chamadas de IA
+    if (!lastResponse.tool_calls || lastResponse.tool_calls.length === 0) {
+      logger.debug('MessageProcessor', 'Sem tool_calls - permitindo nova iteração da IA');
+      return false;
     }
     
+    // Continuar o ciclo para permitir que a IA faça novas chamadas após executar tools
+    logger.debug('MessageProcessor', 'Tools executadas - permitindo nova iteração da IA');
     return false;
   }
 
