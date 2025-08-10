@@ -41,10 +41,17 @@ class MessageProcessor {
     const messageId = logger.generateMessageId();
     
     const startTime = Date.now();
-    logger.start('MessageProcessor', 'Iniciando processamento da mensagem');
+    logger.start('MessageProcessor', 'Processamento de mensagem iniciado');
     
     try {
       const { data } = message;
+      
+      // Log da interação inicial
+      logger.interaction('MessageProcessor', 'webhook-received', {
+        from: data.from,
+        messageType: data.messageType || 'text',
+        hasImage: !!data.image
+      });
       
       // Verificar autorização da mensagem
       if (!MessageAuthHandler.isMessageAuthorized(data, groups)) {
@@ -52,188 +59,194 @@ class MessageProcessor {
         return;
       }
 
-      let stepTime = Date.now();
       logger.milestone('MessageProcessor', 'Mensagem autorizada para processamento');
     
-    // Feedback imediato: simular digitação no início
-    simulateTyping(data.from, true); // Não aguardar - executar em background
+      // Feedback imediato: simular digitação no início
+      simulateTyping(data.from, true); // Não aguardar - executar em background
     
-    // Processar imagens automaticamente se detectadas
-    const { userContent, imageAnalysisResult } = await ImageProcessor.processImage(data);
-    const userId = MessageAuthHandler.extractUserId(data.from);
+      // Processar imagens automaticamente se detectadas
+      logger.step('MessageProcessor', 'Processando imagens detectadas');
+      const { userContent, imageAnalysisResult } = await ImageProcessor.processImage(data);
+      const userId = MessageAuthHandler.extractUserId(data.from);
     
-    // Carregar dados do usuário
-    stepTime = Date.now();
-    logger.debug('MessageProcessor', 'Carregando contexto e perfil do usuário...');
-    
-    const [
-      { messages: rawMessages }, 
-      userProfile, 
-      ltmContext
-    ] = await Promise.all([
-      getUserContext(userId),
-      getUserProfile(userId),
-      LtmService.getRelevantContext(userId, userContent)
-    ]);
-    
-    logger.timing('MessageProcessor', 'Dados do usuário carregados');
-    
-    // Sanitizar contexto histórico
-    stepTime = Date.now();
-    logger.debug('MessageProcessor', 'Sanitizando contexto histórico...');
-    let messages = sanitizeMessagesForChat(rawMessages);
-    logger.timing('MessageProcessor', 'Contexto histórico sanitizado');
-    
-    // Gerenciar STM (Short Term Memory)
-    stepTime = Date.now();
-    logger.debug('MessageProcessor', '🧠 Iniciando gerenciamento STM...');
-    try {
-      messages = await STMManager.manageSTM(messages, userContent, userId, data.from);
-      logger.timing('MessageProcessor', '🧠 Gerenciamento STM concluído');
-    } catch (error) {
-      logger.error('MessageProcessor', `❌ Erro no gerenciamento STM: ${error.message}`);
-      logger.error('MessageProcessor', `Stack: ${error.stack}`);
-      throw error;
-    }
-
-    // Construir prompt dinâmico
-    stepTime = Date.now();
-    logger.debug('MessageProcessor', '🏗️ Construindo prompt dinâmico...');
-    let dynamicPrompt;
-    try {
-      dynamicPrompt = DynamicPromptBuilder.buildDynamicPrompt(userProfile, ltmContext, imageAnalysisResult);
-      logger.timing('MessageProcessor', '🏗️ Prompt dinâmico construído');
-    } catch (error) {
-      logger.error('MessageProcessor', `❌ Erro na construção do prompt: ${error.message}`);
-      throw error;
-    }
-
-    // Executar análises de IA
-    stepTime = Date.now();
-    simulateTyping(data.from, true);
-    logger.debug('MessageProcessor', '🤖 Iniciando análises de IA...');
-    try {
-      const { currentSentiment, inferredStyle } = await AIAnalysisHandler.performAIAnalysis(userContent, userId, userProfile);
-      logger.timing('MessageProcessor', '🤖 Análises de IA concluídas');
-    } catch (error) {
-      logger.error('MessageProcessor', `❌ Erro nas análises de IA: ${error.message}`);
-      throw error;
-    }
-
-    // Preparar mensagens para chat
-    logger.debug('MessageProcessor', '💬 Preparando mensagens para chat...');
-    const chatMessages = [dynamicPrompt, ...messages, { role: 'user', content: userContent }];
-    const sanitizedChatMessages = sanitizeMessagesForChat(chatMessages);
-    
-    // Obter ferramentas disponíveis do MCP dinamicamente
-    logger.debug('MessageProcessor', '🔧 Obtendo ferramentas do MCP dinamicamente...');
-    const mcpExecutor = new MCPToolExecutor();
-    const dynamicTools = await mcpExecutor.getToolsForOpenAI();
-    logger.milestone('MessageProcessor', `🎯 ${dynamicTools.length} ferramentas obtidas do MCP dinamicamente`);
-    
-    // Gerar resposta principal da IA com ferramentas dinâmicas
-    stepTime = Date.now();
-    logger.debug('MessageProcessor', '🎯 Gerando resposta principal da IA com ferramentas dinâmicas...');
-    let response;
-    try {
-      response = await chatAi(sanitizedChatMessages, dynamicTools);
-      response = normalizeAiResponse(response);
+      // Carregar dados do usuário
+      logger.step('MessageProcessor', 'Carregando contexto e perfil do usuário');
       
-      // Log da resposta da IA para análise (apenas arquivo)
-      logger.aiResponse('MessageProcessor', 'Resposta principal da IA gerada', {
-        messageContent: response.message?.content?.substring(0, 500) + '...' || 'Sem conteúdo',
-        toolCalls: response.message?.tool_calls?.length || 0,
-        hasToolCalls: !!response.message?.tool_calls,
-        responseSize: JSON.stringify(response).length
+      const [
+        { messages: rawMessages }, 
+        userProfile, 
+        ltmContext
+      ] = await Promise.all([
+        getUserContext(userId),
+        getUserProfile(userId),
+        LtmService.getRelevantContext(userId, userContent)
+      ]);
+    
+      logger.timing('MessageProcessor', 'Dados do usuário carregados', {
+        messagesCount: rawMessages.length,
+        hasUserProfile: !!userProfile,
+        ltmContextSize: ltmContext?.length || 0
       });
-      
-      logger.timing('MessageProcessor', '🎯 Resposta principal gerada');
-    } catch (error) {
-      logger.error('MessageProcessor', `❌ Erro ao gerar resposta principal: ${error.message}`);
-      
-      // Try to send an error message to the user instead of crashing
+    
+      // Sanitizar contexto histórico
+      logger.step('MessageProcessor', 'Sanitizando contexto histórico');
+      let messages = sanitizeMessagesForChat(rawMessages);
+      logger.timing('MessageProcessor', 'Contexto histórico sanitizado', {
+        originalCount: rawMessages.length,
+        sanitizedCount: messages.length
+      });
+    
+      // Gerenciar STM (Short Term Memory)
+      logger.step('MessageProcessor', '🧠 Iniciando gerenciamento STM');
       try {
-        const mcpExecutor = new MCPToolExecutor();
-        await mcpExecutor.executeTools([{
-          name: 'send_message',
-          arguments: {
-            content: `❌ Desculpe, ocorreu um erro temporário ao processar sua mensagem. Tente novamente em alguns segundos.\n\nDetalhes: ${error.message.includes('Rate limit') ? 'Limite de uso da IA atingido temporariamente.' : 'Erro interno do sistema.'}`
-          }
-        }]);
-        logger.milestone('MessageProcessor', '📤 Mensagem de erro enviada ao usuário');
-        return; // Exit gracefully
-      } catch (fallbackError) {
-        logger.error('MessageProcessor', `❌ Falha ao enviar mensagem de erro: ${fallbackError.message}`);
+        messages = await STMManager.manageSTM(messages, userContent, userId, data.from);
+        logger.timing('MessageProcessor', '🧠 Gerenciamento STM concluído', {
+          finalMessageCount: messages.length
+        });
+      } catch (error) {
+        logger.critical('MessageProcessor', `Erro no gerenciamento STM: ${error.message}`, {
+          stack: error.stack
+        });
+        throw error;
       }
+
+      // Construir prompt dinâmico
+      logger.step('MessageProcessor', '🏗️ Construindo prompt dinâmico');
+      let dynamicPrompt;
+      try {
+        dynamicPrompt = DynamicPromptBuilder.buildDynamicPrompt(userProfile, ltmContext, imageAnalysisResult);
+        logger.timing('MessageProcessor', '🏗️ Prompt dinâmico construído');
+      } catch (error) {
+        logger.critical('MessageProcessor', `Erro na construção do prompt: ${error.message}`);
+        throw error;
+      }
+
+      // Executar análises de IA
+      simulateTyping(data.from, true);
+      logger.step('MessageProcessor', '🤖 Iniciando análises de IA');
+      try {
+        const { currentSentiment, inferredStyle } = await AIAnalysisHandler.performAIAnalysis(userContent, userId, userProfile);
+        logger.timing('MessageProcessor', '🤖 Análises de IA concluídas', {
+          sentiment: currentSentiment,
+          style: inferredStyle
+        });
+      } catch (error) {
+        logger.error('MessageProcessor', `Erro nas análises de IA: ${error.message}`);
+        // Não interromper o fluxo por erro nas análises
+      }
+
+      // Preparar mensagens para chat
+      logger.step('MessageProcessor', '💬 Preparando mensagens para chat');
+      const chatMessages = [dynamicPrompt, ...messages, { role: 'user', content: userContent }];
+      const sanitizedChatMessages = sanitizeMessagesForChat(chatMessages);
+    
+      // Obter ferramentas disponíveis do MCP dinamicamente
+      logger.step('MessageProcessor', '🔧 Obtendo ferramentas do MCP dinamicamente');
+      const mcpExecutor = new MCPToolExecutor();
+      const dynamicTools = await mcpExecutor.getToolsForOpenAI();
+      logger.milestone('MessageProcessor', `${dynamicTools.length} ferramentas obtidas do MCP dinamicamente`);
+    
+      // Gerar resposta principal da IA com ferramentas dinâmicas
+      logger.step('MessageProcessor', '🎯 Gerando resposta principal da IA com ferramentas dinâmicas');
+      let response;
+      try {
+        const aiStartTime = Date.now();
+        response = await chatAi(sanitizedChatMessages, dynamicTools);
+        const aiEndTime = Date.now();
+        
+        response = normalizeAiResponse(response);
+        
+        // Log detalhado da resposta da IA
+        logger.aiResponse('MessageProcessor', 'OpenAI', response, {
+          requestTime: aiEndTime - aiStartTime,
+          messageLength: sanitizedChatMessages.length,
+          toolsAvailable: dynamicTools.length
+        });
+        
+        logger.timing('MessageProcessor', '🎯 Resposta principal gerada', {
+          aiTime: `${aiEndTime - aiStartTime}ms`,
+          hasContent: !!response.message?.content,
+          toolCallsCount: response.message?.tool_calls?.length || 0
+        });
+      } catch (error) {
+        logger.critical('MessageProcessor', `Erro ao gerar resposta principal: ${error.message}`);
+        
+        // Try to send an error message to the user instead of crashing
+        try {
+          const mcpExecutor = new MCPToolExecutor();
+          await mcpExecutor.executeTools([{
+            name: 'send_message',
+            arguments: {
+              content: `❌ Desculpe, ocorreu um erro temporário ao processar sua mensagem. Tente novamente em alguns segundos.\n\nDetalhes: ${error.message.includes('Rate limit') ? 'Limite de uso da IA atingido temporariamente.' : 'Erro interno do sistema.'}`
+            }
+          }]);
+          logger.milestone('MessageProcessor', 'Mensagem de erro enviada ao usuário');
+          return; // Exit gracefully
+        } catch (fallbackError) {
+          logger.critical('MessageProcessor', `Falha ao enviar mensagem de erro: ${fallbackError.message}`);
+        }
+        
+        throw error; // Only throw if we couldn't send error message to user
+      }
+
+      // Atualizar mensagens com interação atual
+      logger.step('MessageProcessor', '📝 Atualizando mensagens com interação atual');
+      messages.push({ role: 'user', content: userContent });
+      messages.push(response.message);
+
+      // Executar ciclo de ferramentas
+      logger.step('MessageProcessor', '🔧 Iniciando ciclo de ferramentas');
+      logger.debug('MessageProcessor', `Response tem tool_calls: ${response.message.tool_calls?.length || 0}`);
+      await this._executeToolCycle(messages, response, dynamicTools, data, userContent, imageAnalysisResult, mcpExecutor);
+      logger.timing('MessageProcessor', '🔧 Ciclo de ferramentas concluído');
+
+      // Atualizações finais
+      logger.step('MessageProcessor', '💾 Realizando atualizações finais');
+    
+      await updateUserContext(userId, { messages });
+
+      // Atualizações assíncronas em background
+      logger.debug('MessageProcessor', 'Iniciando atualizações assíncronas em background');
+    
+      // Limitar o texto para LTM a um tamanho razoável (aprox. 6000 tokens = 24000 chars)
+      const conversationText = messages.map((m) => m.content).join('\n');
+      const limitedText = conversationText.length > 24000 
+        ? conversationText.substring(conversationText.length - 24000) 
+        : conversationText;
       
-      throw error; // Only throw if we couldn't send error message to user
-    }
-
-    // Atualizar mensagens com interação atual
-    logger.debug('MessageProcessor', '📝 Atualizando mensagens com interação atual...');
-    messages.push({ role: 'user', content: userContent });
-    messages.push(response.message);
-
-    // Executar ciclo de ferramentas
-    logger.debug('MessageProcessor', '🔧 Iniciando ciclo de ferramentas...');
-    logger.debug('MessageProcessor', `🔧 Response tem tool_calls: ${response.message.tool_calls?.length || 0}`);
-    logger.debug('MessageProcessor', `🔧 Chamando _executeToolCycle...`);
-    await this._executeToolCycle(messages, response, dynamicTools, data, userContent, imageAnalysisResult, mcpExecutor);
-    logger.debug('MessageProcessor', '🔧 Ciclo de ferramentas concluído');
-
-    // Atualizações finais
-    stepTime = Date.now();
-    logger.debug('MessageProcessor', '💾 Realizando atualizações finais...');
-    
-    await updateUserContext(userId, { messages });
-
-    // Atualizações assíncronas em background
-    logger.debug('MessageProcessor', '📚 Iniciando atualizações assíncronas em background...');
-    
-    // Limitar o texto para LTM a um tamanho razoável (aprox. 6000 tokens = 24000 chars)
-    const conversationText = messages.map((m) => m.content).join('\n');
-    const limitedText = conversationText.length > 24000 
-      ? conversationText.substring(conversationText.length - 24000) 
-      : conversationText;
+      updateUserProfileSummary(userId, messages)
+        .catch(err => logger.error('MessageProcessor', `Erro ao atualizar resumo do perfil em background: ${err}`));
+        
+      logger.timing('MessageProcessor', ' Atualizações concluídas');
       
-    LtmService.summarizeAndStore(userId, limitedText)
-        .catch(err => logger.error('MessageProcessor', `Erro ao armazenar na LTM em background: ${err}`));
-
-    updateUserProfileSummary(userId, messages)
-      .catch(err => logger.error('MessageProcessor', `Erro ao atualizar resumo do perfil em background: ${err}`));
+      logger.end('MessageProcessor', `Processamento da mensagem concluído - TEMPO TOTAL: ${Date.now() - startTime}ms`);
       
-    logger.timing('MessageProcessor', '💾 Atualizações concluídas');
-    
-    logger.end('MessageProcessor', `Processamento da mensagem concluído - TEMPO TOTAL: ${Date.now() - startTime}ms`);
-    
     } catch (error) {
-      logger.error('MessageProcessor', `❌ Erro crítico no processamento: ${error.message}`);
-      logger.error('MessageProcessor', `Stack trace: ${error.stack}`);
-      
+      logger.critical('MessageProcessor', `Erro crítico no processamento: ${error.message}`, {
+        stack: error.stack
+      });
       // Tentar enviar uma mensagem de erro para o usuário
       try {
         const { data } = message;
         await simulateTyping(data.from, false);
         
         // Try to use MCP to send error message
-        const mcpExecutor = new MCPToolExecutor();
-        await mcpExecutor.executeTools([{
+        const fallbackMcpExecutor = new MCPToolExecutor();
+        await fallbackMcpExecutor.executeTools([{
           name: 'send_message',
           arguments: {
             content: `❌ Ocorreu um erro interno. Por favor, tente novamente em alguns minutos.\n\n${error.message.includes('Rate limit') ? '🕐 Sistema temporariamente sobrecarregado.' : '⚠️ Erro no processamento da mensagem.'}`
           }
         }]);
         
-        logger.milestone('MessageProcessor', '📤 Mensagem de erro enviada ao usuário via MCP');
+        logger.milestone('MessageProcessor', 'Mensagem de erro enviada ao usuário via MCP');
       } catch (fallbackError) {
-        logger.error('MessageProcessor', `❌ Erro no fallback: ${fallbackError.message}`);
-        
-        // Last resort: log that we couldn't notify user
-        logger.error('MessageProcessor', '❌ CRÍTICO: Não foi possível notificar o usuário sobre o erro');
+        logger.critical('MessageProcessor', `Erro no fallback: ${fallbackError.message}`);
+        logger.critical('MessageProcessor', 'CRÍTICO: Não foi possível notificar o usuário sobre o erro');
       }
       
       // Don't re-throw - let the application continue running
-      logger.error('MessageProcessor', '🔄 Erro tratado - aplicação continuará executando');
+      logger.milestone('MessageProcessor', 'Erro tratado - aplicação continuará executando');
     }
   }
 

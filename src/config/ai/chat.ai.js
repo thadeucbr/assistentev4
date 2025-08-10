@@ -1,5 +1,6 @@
 import ollamaChat from './ollama/ollamaChat.js';
 import openAiChat from './openai/openAiChat.js';
+import logger from '../../utils/logger.js';
 
 export default async function chatAi(chatMessages, tools) {
   const provider = process.env.AI_PROVIDER;
@@ -7,45 +8,82 @@ export default async function chatAi(chatMessages, tools) {
   if (provider === 'ollama') {
     // If Ollama is the provider, try it and fallback to OpenAI on error.
     try {
-      return await ollamaChat(chatMessages, tools);
+      logger.systemStatus('Ollama', 'connecting');
+      const result = await ollamaChat(chatMessages, tools);
+      logger.systemStatus('Ollama', 'online');
+      return result;
     } catch (err) {
-      console.warn(`Ollama chat failed, falling back to OpenAI: ${err.message}`);
+      logger.systemStatus('Ollama', 'error', { error: err.message });
+      logger.warn('ChatAI', `Ollama falhou, usando OpenAI como fallback: ${err.message}`);
+      
       try {
-        return await openAiChat(chatMessages, tools);
+        logger.systemStatus('OpenAI', 'connecting');
+        const result = await openAiChat(chatMessages, tools);
+        logger.systemStatus('OpenAI', 'online');
+        return result;
       } catch (fallbackErr) {
-        console.error('Both Ollama and OpenAI failed:', { ollama: err.message, openai: fallbackErr.message });
+        logger.systemStatus('OpenAI', 'error', { error: fallbackErr.message });
+        logger.critical('ChatAI', 'Tanto Ollama quanto OpenAI falharam', { 
+          ollama: err.message, 
+          openai: fallbackErr.message 
+        });
         throw new Error(`AI chat failed: Primary (Ollama): ${err.message}, Fallback (OpenAI): ${fallbackErr.message}`);
       }
     }
   } else if (provider === 'openai') {
     // If OpenAI is the provider, handle rate limits gracefully
     try {
-      return await openAiChat(chatMessages, tools);
+      logger.systemStatus('OpenAI', 'connecting');
+      const result = await openAiChat(chatMessages, tools);
+      logger.systemStatus('OpenAI', 'online');
+      return result;
     } catch (err) {
       if (err.isRateLimit) {
-        console.warn(`OpenAI rate limit hit, attempting fallback to Ollama: ${err.message}`);
+        logger.systemStatus('OpenAI', 'warning', { error: 'Rate limit atingido' });
+        logger.warn('ChatAI', `OpenAI rate limit atingido, tentando Ollama: ${err.message}`);
+        
         try {
-          return await ollamaChat(chatMessages, tools);
+          logger.systemStatus('Ollama', 'connecting');
+          const result = await ollamaChat(chatMessages, tools);
+          logger.systemStatus('Ollama', 'online');
+          return result;
         } catch (fallbackErr) {
-          console.error('OpenAI rate limited and Ollama fallback failed:', { openai: err.message, ollama: fallbackErr.message });
+          logger.systemStatus('Ollama', 'error', { error: fallbackErr.message });
+          logger.critical('ChatAI', 'OpenAI com rate limit e Ollama falhou', { 
+            openai: err.message, 
+            ollama: fallbackErr.message 
+          });
           throw new Error(`AI chat failed: OpenAI rate limited: ${err.message}, Ollama fallback: ${fallbackErr.message}`);
         }
       } else {
         // Non-rate-limit OpenAI errors - propagate directly
-        console.error('OpenAI chat error:', err.message);
+        logger.systemStatus('OpenAI', 'error', { error: err.message });
+        logger.error('ChatAI', `Erro no OpenAI: ${err.message}`);
         throw err;
       }
     }
   } else {
     // Default behavior if no provider is specified: try OpenAI first, then Ollama.
     try {
-      return await openAiChat(chatMessages, tools);
+      logger.systemStatus('OpenAI', 'connecting');
+      const result = await openAiChat(chatMessages, tools);
+      logger.systemStatus('OpenAI', 'online');
+      return result;
     } catch (err) {
-      console.warn(`OpenAI chat failed, falling back to Ollama: ${err.message}`);
+      logger.systemStatus('OpenAI', 'error', { error: err.message });
+      logger.warn('ChatAI', `OpenAI falhou, usando Ollama como fallback: ${err.message}`);
+      
       try {
-        return await ollamaChat(chatMessages, tools);
+        logger.systemStatus('Ollama', 'connecting');
+        const result = await ollamaChat(chatMessages, tools);
+        logger.systemStatus('Ollama', 'online');
+        return result;
       } catch (fallbackErr) {
-        console.error('Both OpenAI and Ollama failed:', { openai: err.message, ollama: fallbackErr.message });
+        logger.systemStatus('Ollama', 'error', { error: fallbackErr.message });
+        logger.critical('ChatAI', 'Tanto OpenAI quanto Ollama falharam', { 
+          openai: err.message, 
+          ollama: fallbackErr.message 
+        });
         throw new Error(`AI chat failed: Primary (OpenAI): ${err.message}, Fallback (Ollama): ${fallbackErr.message}`);
       }
     }

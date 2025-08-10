@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express, { json } from 'express';
 import processMessage from './src/core/messageProcessor.js';
 import { startReminderScheduler } from './src/skills/reminder.js';
-import { logError } from './src/utils/logger.js';
+import logger from './src/utils/logger.js';
 
 const PORT = process.env.EXPRESS_PORT || 3000;
 const BLACK_LIST = JSON.parse(process.env.WHATSAPP_BLACK_LIST || '[]');
@@ -15,16 +15,28 @@ startReminderScheduler();
 app.post('/webhook', (req, res) => {
   try {
     if (BLACK_LIST.includes(req.body.data.from)) {
+      logger.warn('Webhook', `Usuário na blacklist tentou enviar mensagem: ${req.body.data.from}`);
       return res.status(403).send('Forbidden');
     }
+    
+    // Log da chegada do webhook
+    logger.interaction('Webhook', 'message-received', {
+      from: req.body.data.from,
+      messageType: req.body.data.messageType || 'text'
+    });
+    
     processMessage(req.body);
     res.send('OK');
   } catch (err) {
-    logError(err, 'Webhook processing failed');
+    logger.critical('Webhook', `Erro no processamento do webhook: ${err.message}`, {
+      stack: err.stack,
+      requestBody: JSON.stringify(req.body).substring(0, 500)
+    });
     res.status(500).send('Internal Server Error');
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  logger.systemStatus('ExpressServer', 'online', { port: PORT });
+  console.log(`🚀 [SYSTEM] Servidor iniciado na porta ${PORT}`);
 });

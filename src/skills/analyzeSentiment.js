@@ -1,7 +1,7 @@
 
 import chatAi from '../config/ai/chat.ai.js';
 import { extractContent } from '../utils/aiResponseUtils.js';
-import { logError } from '../utils/logger.js';
+import logger from '../utils/logger.js';
 
 const SENTIMENT_ANALYSIS_PROMPT = {
   role: 'system',
@@ -10,6 +10,8 @@ const SENTIMENT_ANALYSIS_PROMPT = {
 
 export default async function analyzeSentiment(text) {
   try {
+    logger.step('AnalyzeSentiment', 'Analisando sentimento do texto');
+    
     const messages = [
       SENTIMENT_ANALYSIS_PROMPT,
       { role: 'user', content: text }
@@ -21,13 +23,24 @@ export default async function analyzeSentiment(text) {
     const sentiment = content.toLowerCase().trim();
 
     if (['positivo', 'neutro', 'negativo'].includes(sentiment)) {
+      logger.debug('AnalyzeSentiment', `Sentimento analisado: ${sentiment}`, {
+        textLength: text.length,
+        sentiment
+      });
       return sentiment;
     } else {
+      logger.warn('AnalyzeSentiment', `Resposta inesperada da IA: ${content}`, {
+        textLength: text.length,
+        unexpectedResponse: content
+      });
       return 'neutro'; // Retorna neutro em caso de resposta inesperada
     }
   } catch (error) {
-    logError(error, `analyzeSentiment - Failed to analyze sentiment for text: "${text}"`);
-    console.error('Erro ao analisar sentimento:', error);
+    logger.error('AnalyzeSentiment', `Erro ao analisar sentimento: ${error.message}`, {
+      textLength: text.length,
+      textPreview: text.substring(0, 100),
+      stack: error.stack
+    });
     return 'neutro'; // Retorna neutro em caso de erro
   }
 }

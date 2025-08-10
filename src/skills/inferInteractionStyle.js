@@ -1,5 +1,6 @@
 import chatAi from '../config/ai/chat.ai.js';
 import { retryAiJsonCall } from '../utils/aiResponseUtils.js';
+import logger from '../utils/logger.js';
 
 const SYSTEM_PROMPT = {
   role: 'system',
@@ -29,6 +30,8 @@ export default async function inferInteractionStyle(userMessage) {
     verbosity: 'unknown',
   };
 
+  logger.step('InferInteractionStyle', 'Inferindo estilo de interação do usuário');
+
   // Função que faz a chamada de IA, recebendo o número da tentativa
   const makeAiCall = async (attemptNumber) => {
     let messages = [
@@ -47,14 +50,29 @@ export default async function inferInteractionStyle(userMessage) {
     return await chatAi(messages, []);
   };
 
-  // Usar a função de retry com JSON
-  const result = await retryAiJsonCall(makeAiCall, 3, 1000);
-  
-  if (result.success) {
-    // console.log('Estilo de interação inferido com sucesso:', result.data);
-    return result.data;
-  } else {
-    console.warn('Todas as tentativas de inferir estilo de interação falharam. Usando estilo padrão.');
+  try {
+    // Usar a função de retry com JSON
+    const result = await retryAiJsonCall(makeAiCall, 3, 1000);
+    
+    if (result.success) {
+      logger.debug('InferInteractionStyle', 'Estilo de interação inferido com sucesso', {
+        messageLength: userMessage.length,
+        inferredStyle: result.data
+      });
+      return result.data;
+    } else {
+      logger.warn('InferInteractionStyle', 'Todas as tentativas de inferir estilo falharam, usando estilo padrão', {
+        messageLength: userMessage.length,
+        attempts: 3
+      });
+      return defaultStyle;
+    }
+  } catch (error) {
+    logger.error('InferInteractionStyle', `Erro ao inferir estilo de interação: ${error.message}`, {
+      messageLength: userMessage.length,
+      messagePreview: userMessage.substring(0, 100),
+      stack: error.stack
+    });
     return defaultStyle;
   }
 }

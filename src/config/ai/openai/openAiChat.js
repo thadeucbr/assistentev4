@@ -1,3 +1,5 @@
+import logger from '../../../utils/logger.js';
+
 const OPENAI_URL = process.env.OPENAI_URL || 'https://api.openai.com/v1/chat/completions';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
@@ -103,10 +105,18 @@ function sanitizeMessages(messages) {
 
 
 export default async function openAiChat(chatMessages, toolsParam) {
+  const startTime = Date.now();
+  
   chatMessages = sanitizeMessages(chatMessages);
   if (!OPENAI_KEY) {
     throw new Error('Missing OPENAI_API_KEY environment variable');
   }
+
+  logger.debug('OpenAI', 'Iniciando chamada para OpenAI', {
+    model: OPENAI_MODEL,
+    messagesCount: chatMessages.length,
+    toolsCount: toolsParam?.length || 0
+  });
 
   const body = {
     model: OPENAI_MODEL,
@@ -118,45 +128,104 @@ export default async function openAiChat(chatMessages, toolsParam) {
   if (toolsToUse) {
     body.tools = toolsToUse;
     body.tool_choice = 'required'; // Force the model to use a tool
+    logger.debug('OpenAI', `Usando ${toolsToUse.length} ferramentas com tool_choice=required`);
   }
 
-  const response = await fetch(OPENAI_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENAI_KEY}`
-    },
-    body: JSON.stringify(body)
-  });
+  try {
+    logger.systemStatus('OpenAI-API', 'connecting');
+    
+    const response = await fetch(OPENAI_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_KEY}`
+      },
+      body: JSON.stringify(body)
+    });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    console.log('OpenAI chat response:', errText);
-    console.log('Body:', JSON.stringify(body));
-    
-    // Parse error details for better handling
-    let errorDetails;
-    try {
-      errorDetails = JSON.parse(errText);
-    } catch {
-      errorDetails = { error: { message: errText } };
-    }
-    
-    // Handle rate limits gracefully
-    if (response.status === 429) {
-      const error = new Error(`OpenAI Rate Limit: ${errorDetails.error?.message || 'Rate limit exceeded'}`);
-      error.isRateLimit = true;
-      error.statusCode = 429;
+    const responseTime = Date.now() - startTime;
+
+    if (!response.ok) {
+      const errText = await response.text();
+      
+      logger.error('OpenAI', `Resposta HTTP ${response.status}`, {
+        status: response.status,
+        responseText: errText.substring(0, 500),
+        requestModel: OPENAI_MODEL,
+        responseTime: `${responseTime}ms`
+      });
+      
+      // Parse error details for better handling
+      let errorDetails;
+      try {
+        errorDetails = JSON.parse(errText);
+      } catch {
+        errorDetails = { error: { message: errText } };
+      }
+      
+      // Handle rate limits gracefully
+      if (response.status === 429) {
+        logger.systemStatus('OpenAI-API', 'warning', { 
+          reason: 'rate-limit',
+          responseTime: `${responseTime}ms`
+        });
+        const error = new Error(`OpenAI Rate Limit: ${errorDetails.error?.message || 'Rate limit exceeded'}`);
+        error.isRateLimit = true;
+        error.statusCode = 429;
+        throw error;
+      }
+      
+      // Handle other errors
+      logger.systemStatus('OpenAI-API', 'error', {
+        status: response.status,
+        responseTime: `${responseTime}ms`
+      });
+      const error = new Error(`OpenAI chat failed: ${response.status} ${errorDetails.error?.message || errText}`);
+      error.statusCode = response.status;
       throw error;
     }
+
+    const result = await response.json();
+    const { choices, usage } = result;
+
+    logger.systemStatus('OpenAI-API', 'online', {
+      responseTime: `${responseTime}ms`,
+      usage: usage
+    });
+
+    // Log detalhado da resposta
+    logger.aiResponse('OpenAI', 'OpenAI', {
+      message: choices[0]?.message,
+      usage: usage,
+      model: OPENAI_MODEL
+    }, {
+      requestTime: responseTime,
+      messageLength: chatMessages.length,
+      toolsAvailable: toolsParam?.length || 0
+    });
+
+    return {
+      message: choices[0]?.message
+    };
     
-    // Handle other errors
-    const error = new Error(`OpenAI chat failed: ${response.status} ${errorDetails.error?.message || errText}`);
-    error.statusCode = response.status;
+  } catch (error) {
+    const responseTime = Date.now() - startTime;
+    
+    if (!error.statusCode) {
+      // Network or other unexpected errors
+      logger.systemStatus('OpenAI-API', 'error', {
+        error: error.message,
+        responseTime: `${responseTime}ms`,
+        type: 'network-error'
+      });
+    }
+    
+    logger.error('OpenAI', `Erro na chamada OpenAI: ${error.message}`, {
+      responseTime: `${responseTime}ms`,
+      isRateLimit: error.isRateLimit || false,
+      statusCode: error.statusCode
+    });
+    
     throw error;
   }
-
-  const { choices } = await response.json();
-
-  return choices[0];
 }

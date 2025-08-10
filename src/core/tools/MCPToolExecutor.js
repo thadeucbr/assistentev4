@@ -21,18 +21,18 @@ export default class MCPToolExecutor {
     }
 
     try {
-      logger.info('MCPToolExecutor', '🔍 Consultando tools disponíveis no MCP...');
+      logger.step('MCPToolExecutor', 'Consultando tools disponíveis no MCP');
       this.availableTools = await this.mcpClient.listTools();
-      logger.info('MCPToolExecutor', `✅ ${this.availableTools.length} tools encontradas no MCP`);
+      logger.timing('MCPToolExecutor', `${this.availableTools.length} tools encontradas no MCP`);
       
-      // Log das tools encontradas
+      // Log das tools encontradas (apenas debug)
       this.availableTools.forEach(tool => {
-        logger.debug('MCPToolExecutor', `📋 Tool disponível: ${tool.name} - ${tool.description}`);
+        logger.debug('MCPToolExecutor', `Tool disponível: ${tool.name} - ${tool.description}`);
       });
       
       return this.availableTools;
     } catch (error) {
-      logger.error('MCPToolExecutor', `❌ Erro ao consultar tools do MCP: ${error.message}`);
+      logger.critical('MCPToolExecutor', `Erro ao consultar tools do MCP: ${error.message}`);
       return [];
     }
   }
@@ -71,17 +71,25 @@ export default class MCPToolExecutor {
    * @returns {Promise<Array>} - Mensagens atualizadas
    */
   async executeTools(messages, response, tools, from, messageId, userContent, messageData, imageAnalysisResult) {
-    logger.milestone('MCPToolExecutor', '🎯 🚀 Executando tools via MCP');
+    logger.milestone('MCPToolExecutor', 'Executando tools via MCP');
     
     let newMessages = [...messages];
     const toolResponses = [];
 
     for (const toolCall of response.message.tool_calls) {
       const toolName = toolCall.function.name;
-      const args = JSON.parse(toolCall.function.arguments);
+      const toolId = toolCall.id;
+      let args;
       
-      logger.milestone('MCPToolExecutor', `🎯 Executando tool: "${toolName}" via MCP`);
-      logger.debug('MCPToolExecutor', `📝 Args para ${toolName}:`, args);
+      try {
+        args = JSON.parse(toolCall.function.arguments);
+      } catch (parseError) {
+        logger.error('MCPToolExecutor', `Erro ao parsear argumentos para ${toolName}: ${parseError.message}`);
+        args = {};
+      }
+      
+      // Iniciar tracking da tool
+      logger.toolStart(toolName, toolId, args);
 
       try {
         // Adaptar argumentos para MCP
@@ -101,10 +109,12 @@ export default class MCPToolExecutor {
         
         toolResponses.push(toolResponse);
         
-        logger.milestone('MCPToolExecutor', `✅ Tool "${toolName}" executada via MCP com sucesso`);
+        // Finalizar tracking da tool com sucesso
+        logger.toolEnd(toolName, toolId, toolResult);
         
       } catch (error) {
-        logger.error('MCPToolExecutor', `❌ Erro ao executar "${toolName}" via MCP:`, error.message);
+        // Finalizar tracking da tool com erro
+        logger.toolEnd(toolName, toolId, null, error);
         
         // Criar resposta de erro mais informativa
         const errorMessage = this.createErrorMessage(toolName, error);
@@ -115,14 +125,13 @@ export default class MCPToolExecutor {
         };
         
         toolResponses.push(errorResponse);
-        logger.warn('MCPToolExecutor', `⚠️ Resposta de erro criada para "${toolName}"`);
       }
     }
 
     // Adicionar todas as respostas das ferramentas
     newMessages.push(...toolResponses);
     
-    logger.debug('MCPToolExecutor', `📨 Total de ${toolResponses.length} respostas de ferramentas adicionadas`);
+    logger.timing('MCPToolExecutor', `${toolResponses.length} tools executadas via MCP`);
     return newMessages;
   }
 
