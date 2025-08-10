@@ -8,7 +8,7 @@
  */
 
 import 'dotenv/config';
-import processMessage from './src/skills/processMessageAI.js';
+import processMessage from './src/core/messageProcessor.js';
 
 console.log('🧪 TESTE DE PROCESSAMENTO AUTOMÁTICO DE IMAGEM');
 console.log('=============================================\n');

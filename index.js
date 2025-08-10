@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import express, { json } from 'express';
-import processMessage from './src/skills/processMessageAI.js';
+import processMessage from './src/core/messageProcessor.js';
 import { startReminderScheduler } from './src/skills/reminder.js';
 import { logError } from './src/utils/logger.js';
 
