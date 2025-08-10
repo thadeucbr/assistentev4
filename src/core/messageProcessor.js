@@ -7,7 +7,7 @@ import { sanitizeMessagesForChat } from './processors/messageSanitizer.js';
 import STMManager from './memory/stmManager.js';
 import ImageProcessor from './processors/imageProcessor.js';
 import DynamicPromptBuilder from './prompt/dynamicPromptBuilder.js';
-import ToolExecutor from './tools/toolExecutor.js';
+import HybridToolExecutor from './tools/HybridToolExecutor.js';
 import MessageAuthHandler from './processors/messageAuthHandler.js';
 import AIAnalysisHandler from './processors/aiAnalysisHandler.js';
 
@@ -44,16 +44,17 @@ class MessageProcessor {
     const startTime = Date.now();
     logger.start('MessageProcessor', 'Iniciando processamento da mensagem');
     
-    const { data } = message;
-    
-    // Verificar autorização da mensagem
-    if (!MessageAuthHandler.isMessageAuthorized(data, groups)) {
-      logger.debug('MessageProcessor', 'Mensagem não autorizada - ignorando');
-      return;
-    }
+    try {
+      const { data } = message;
+      
+      // Verificar autorização da mensagem
+      if (!MessageAuthHandler.isMessageAuthorized(data, groups)) {
+        logger.debug('MessageProcessor', 'Mensagem não autorizada - ignorando');
+        return;
+      }
 
-    let stepTime = Date.now();
-    logger.milestone('MessageProcessor', 'Mensagem autorizada para processamento');
+      let stepTime = Date.now();
+      logger.milestone('MessageProcessor', 'Mensagem autorizada para processamento');
     
     // Feedback imediato: simular digitação no início
     simulateTyping(data.from, true); // Não aguardar - executar em background
@@ -86,55 +87,101 @@ class MessageProcessor {
     
     // Gerenciar STM (Short Term Memory)
     stepTime = Date.now();
-    messages = await STMManager.manageSTM(messages, userContent, userId, data.from);
-    logger.timing('MessageProcessor', 'Gerenciamento STM concluído');
+    logger.debug('MessageProcessor', '🧠 Iniciando gerenciamento STM...');
+    try {
+      messages = await STMManager.manageSTM(messages, userContent, userId, data.from);
+      logger.timing('MessageProcessor', '🧠 Gerenciamento STM concluído');
+    } catch (error) {
+      logger.error('MessageProcessor', `❌ Erro no gerenciamento STM: ${error.message}`);
+      logger.error('MessageProcessor', `Stack: ${error.stack}`);
+      throw error;
+    }
 
     // Construir prompt dinâmico
     stepTime = Date.now();
-    logger.debug('MessageProcessor', 'Construindo prompt dinâmico...');
-    const dynamicPrompt = DynamicPromptBuilder.buildDynamicPrompt(userProfile, ltmContext, imageAnalysisResult);
-    logger.timing('MessageProcessor', 'Prompt dinâmico construído');
+    logger.debug('MessageProcessor', '🏗️ Construindo prompt dinâmico...');
+    let dynamicPrompt;
+    try {
+      dynamicPrompt = DynamicPromptBuilder.buildDynamicPrompt(userProfile, ltmContext, imageAnalysisResult);
+      logger.timing('MessageProcessor', '🏗️ Prompt dinâmico construído');
+    } catch (error) {
+      logger.error('MessageProcessor', `❌ Erro na construção do prompt: ${error.message}`);
+      throw error;
+    }
 
     // Executar análises de IA
     stepTime = Date.now();
     simulateTyping(data.from, true);
-    const { currentSentiment, inferredStyle } = await AIAnalysisHandler.performAIAnalysis(userContent, userId, userProfile);
-    logger.timing('MessageProcessor', 'Análises de IA concluídas');
+    logger.debug('MessageProcessor', '🤖 Iniciando análises de IA...');
+    try {
+      const { currentSentiment, inferredStyle } = await AIAnalysisHandler.performAIAnalysis(userContent, userId, userProfile);
+      logger.timing('MessageProcessor', '🤖 Análises de IA concluídas');
+    } catch (error) {
+      logger.error('MessageProcessor', `❌ Erro nas análises de IA: ${error.message}`);
+      throw error;
+    }
 
     // Preparar mensagens para chat
+    logger.debug('MessageProcessor', '💬 Preparando mensagens para chat...');
     const chatMessages = [dynamicPrompt, ...messages, { role: 'user', content: userContent }];
     const sanitizedChatMessages = sanitizeMessagesForChat(chatMessages);
     
     // Gerar resposta principal da IA
     stepTime = Date.now();
-    logger.debug('MessageProcessor', 'Gerando resposta principal...');
-    let response = await chatAi(sanitizedChatMessages);
-    response = normalizeAiResponse(response);
-    logger.timing('MessageProcessor', 'Resposta principal gerada');
+    logger.debug('MessageProcessor', '🎯 Gerando resposta principal da IA...');
+    let response;
+    try {
+      response = await chatAi(sanitizedChatMessages);
+      response = normalizeAiResponse(response);
+      logger.timing('MessageProcessor', '🎯 Resposta principal gerada');
+    } catch (error) {
+      logger.error('MessageProcessor', `❌ Erro ao gerar resposta principal: ${error.message}`);
+      throw error;
+    }
 
     // Atualizar mensagens com interação atual
+    logger.debug('MessageProcessor', '📝 Atualizando mensagens com interação atual...');
     messages.push({ role: 'user', content: userContent });
     messages.push(response.message);
 
     // Executar ciclo de ferramentas
+    logger.debug('MessageProcessor', '🔧 Iniciando ciclo de ferramentas...');
     await this._executeToolCycle(messages, response, tools, data, userContent, imageAnalysisResult);
+    logger.debug('MessageProcessor', '🔧 Ciclo de ferramentas concluído');
 
     // Atualizações finais
     stepTime = Date.now();
-    logger.debug('MessageProcessor', 'Realizando atualizações finais...');
+    logger.debug('MessageProcessor', '💾 Realizando atualizações finais...');
     
     await updateUserContext(userId, { messages });
 
     // Atualizações assíncronas em background
+    logger.debug('MessageProcessor', '📚 Iniciando atualizações assíncronas em background...');
     LtmService.summarizeAndStore(userId, messages.map((m) => m.content).join('\n'))
         .catch(err => logger.error('MessageProcessor', `Erro ao armazenar na LTM em background: ${err}`));
 
     updateUserProfileSummary(userId, messages)
       .catch(err => logger.error('MessageProcessor', `Erro ao atualizar resumo do perfil em background: ${err}`));
       
-    logger.timing('MessageProcessor', 'Atualizações concluídas');
+    logger.timing('MessageProcessor', '💾 Atualizações concluídas');
     
     logger.end('MessageProcessor', `Processamento da mensagem concluído - TEMPO TOTAL: ${Date.now() - startTime}ms`);
+    
+    } catch (error) {
+      logger.error('MessageProcessor', `❌ Erro crítico no processamento: ${error.message}`);
+      logger.error('MessageProcessor', `Stack trace: ${error.stack}`);
+      
+      // Tentar enviar uma mensagem de erro para o usuário
+      try {
+        const { data } = message;
+        await simulateTyping(data.from, false);
+        // Aqui você pode adicionar um fallback para enviar uma mensagem de erro
+      } catch (fallbackError) {
+        logger.error('MessageProcessor', `❌ Erro no fallback: ${fallbackError.message}`);
+      }
+      
+      throw error; // Re-throw para que seja capturado pelos logs gerais
+    }
   }
 
   /**
@@ -146,11 +193,18 @@ class MessageProcessor {
     const MAX_TOOL_CYCLES = 3;
     let lastResponse = response.message;
     
+    logger.debug('MessageProcessor', `🔧 Iniciando ciclo de ferramentas - Response: ${lastResponse.content ? 'com conteúdo' : 'sem conteúdo'}, Tool calls: ${lastResponse.tool_calls?.length || 0}`);
+    
+    // Inicializar executor híbrido
+    const hybridExecutor = new HybridToolExecutor();
+    
     while (toolCycleCount < MAX_TOOL_CYCLES) {
+      logger.debug('MessageProcessor', `🔄 Ciclo ${toolCycleCount + 1}/${MAX_TOOL_CYCLES}`);
+      
       if ((lastResponse.tool_calls && lastResponse.tool_calls.length > 0) || lastResponse.function_call) {
-        logger.debug('MessageProcessor', 'Executando ferramentas...');
+        logger.debug('MessageProcessor', `🛠️ Executando ${lastResponse.tool_calls?.length || 1} ferramenta(s)...`);
         
-        const updatedMessages = await ToolExecutor.executeTools(
+        const updatedMessages = await hybridExecutor.executeTools(
           messages, 
           { message: lastResponse }, 
           tools, 
@@ -161,6 +215,8 @@ class MessageProcessor {
           imageAnalysisResult
         );
         
+        logger.debug('MessageProcessor', `📨 Mensagens atualizadas: ${updatedMessages.length} total`);
+        
         // Atualizar referência das mensagens
         messages.length = 0;
         messages.push(...updatedMessages);
@@ -169,25 +225,31 @@ class MessageProcessor {
         const lastAssistantMsg = messages.filter(m => m.role === 'assistant').slice(-1)[0];
         if (lastAssistantMsg) {
           lastResponse = lastAssistantMsg;
+          logger.debug('MessageProcessor', `🤖 Nova resposta assistant encontrada com ${lastAssistantMsg.tool_calls?.length || 0} tool calls`);
         } else {
+          logger.debug('MessageProcessor', '❌ Nenhuma mensagem assistant encontrada - encerrando ciclo');
           break;
         }
         
         // Verificar condições de parada
         if (this._shouldStopToolCycle(lastResponse)) {
+          logger.debug('MessageProcessor', '🛑 Condição de parada atingida');
           break;
         }
       } else if (lastResponse.tool_calls && lastResponse.tool_calls.length > 0) {
         // Fallback: garantir que toda tool_call tenha uma mensagem tool
+        logger.debug('MessageProcessor', '⚠️ Fallback: Adicionando respostas para tool_calls órfãas');
         this._addFallbackToolResponses(messages, lastResponse);
         break;
       } else {
         // Se não há tool_calls, encerra ciclo
+        logger.debug('MessageProcessor', '✅ Sem tool_calls - encerrando ciclo normalmente');
         break;
       }
       toolCycleCount++;
     }
 
+    logger.debug('MessageProcessor', '🔍 Verificando necessidade de fallback final...');
     // Fallback final se não houve resposta send_message
     await this._handleFinalFallback(messages, data);
   }
@@ -237,8 +299,10 @@ class MessageProcessor {
       m.tool_calls.some(tc => tc.function.name === 'send_message')
     );
     
+    logger.debug('MessageProcessor', `🔍 Verificação send_message: ${hasSendMessage ? 'ENCONTRADO' : 'NÃO ENCONTRADO'}`);
+    
     if (!hasSendMessage) {
-      logger.warn('MessageProcessor', 'Fallback final: Solicitando à LLM uma mensagem amigável de erro.');
+      logger.warn('MessageProcessor', '⚠️ Fallback final: Solicitando à LLM uma mensagem amigável de erro.');
       
       const sanitizedFallbackHistory = sanitizeMessagesForChat(
         messages.slice(-STMManager.constants.MAX_STM_MESSAGES)
@@ -254,12 +318,16 @@ class MessageProcessor {
       
       let fallbackResponse;
       try {
+        logger.debug('MessageProcessor', '🤖 Gerando resposta de fallback...');
         fallbackResponse = await chatAi(fallbackPrompt);
       } catch (err) {
+        logger.error('MessageProcessor', `❌ Erro ao gerar fallback: ${err.message}`);
         fallbackResponse = { message: { content: 'Desculpe, não consegui atender ao seu pedido neste momento.' } };
       }
       
       const fallbackContent = fallbackResponse?.message?.content || 'Desculpe, não consegui atender ao seu pedido neste momento.';
+      
+      logger.debug('MessageProcessor', `📨 Criando mensagem de fallback: "${fallbackContent.substring(0, 50)}..."`);
       
       const fallbackAssistant = {
         role: 'assistant',
@@ -287,7 +355,9 @@ class MessageProcessor {
       };
       
       messages.push(fallbackTool);
-      logger.info('MessageProcessor', 'Fallback final: Mensagem de erro amigável enviada ao usuário.');
+      logger.info('MessageProcessor', '✅ Fallback final: Mensagem de erro amigável enviada ao usuário.');
+    } else {
+      logger.debug('MessageProcessor', '✅ Send_message encontrado - não precisa de fallback');
     }
   }
 }
