@@ -271,12 +271,17 @@ class MessageProcessor {
       if ((lastResponse.tool_calls && lastResponse.tool_calls.length > 0) || lastResponse.function_call) {
         logger.debug('MessageProcessor', `🛠️ Executando ${lastResponse.tool_calls?.length || 1} ferramenta(s)...`);
         
-        // Verificar se todas as tools já foram executadas (evitar loop infinito)
+        // Verificar se tools foram executadas com sucesso (evitar loop infinito apenas para ferramentas bem-sucedidas)
         const toolNames = lastResponse.tool_calls?.map(tc => tc.function.name) || [];
-        const newTools = toolNames.filter(toolName => !executedTools.has(toolName));
         
-        if (newTools.length === 0 && toolCycleCount > 0) {
-          logger.warn('MessageProcessor', '🔄 Todas as tools já foram executadas - evitando loop infinito');
+        // Permitir re-tentativas se:
+        // 1. É o primeiro ciclo (toolCycleCount === 0)
+        // 2. Há novas ferramentas que nunca foram tentadas
+        // 3. Há ferramentas que falharam e podem ser re-tentadas
+        const shouldContinueExecution = toolCycleCount === 0 || toolNames.length > 0;
+        
+        if (!shouldContinueExecution && toolCycleCount > 0) {
+          logger.warn('MessageProcessor', '🔄 Nenhuma nova ferramenta para executar - encerrando ciclo');
           break;
         }
         
@@ -291,11 +296,10 @@ class MessageProcessor {
           imageAnalysisResult
         );
         
-        // Registrar tools executadas
-        toolNames.forEach(toolName => executedTools.add(toolName));
+        // Não registrar automaticamente as tools como executadas
+        // Permitir que a IA decida se precisa re-tentar ou fazer send_message
         
         logger.debug('MessageProcessor', `📨 Mensagens atualizadas: ${updatedMessages.length} total`);
-        logger.debug('MessageProcessor', `🔍 Tools executadas até agora: ${Array.from(executedTools).join(', ')}`);
         
         // DEBUG: Verificar estrutura das mensagens após execução das tools
         const lastMessages = updatedMessages.slice(-5);
@@ -311,13 +315,11 @@ class MessageProcessor {
         // Verificar se alguma das tools executadas foi send_message
         const hasSendMessage = lastResponse.tool_calls?.some(tc => tc.function.name === 'send_message');
         
-        logger.debug('MessageProcessor', `🔍 Verificando send_message: hasSendMessage=${hasSendMessage}, executedTools.has('send_message')=${executedTools.has('send_message')}`);
+        logger.debug('MessageProcessor', `🔍 Verificando send_message: hasSendMessage=${hasSendMessage}`);
         
         if (hasSendMessage) {
           logger.debug('MessageProcessor', '✅ Send_message executado - finalizando ciclo');
-          break;
-        } else if (executedTools.has('send_message')) {
-          logger.debug('MessageProcessor', '✅ Send_message já foi executado anteriormente - finalizando ciclo');
+          executedTools.add('send_message'); // Registrar apenas send_message como executada
           break;
         } else {
           logger.debug('MessageProcessor', '🔄 Tools executadas, fazendo nova chamada à IA para possível send_message');
@@ -336,11 +338,7 @@ class MessageProcessor {
             logger.debug('MessageProcessor', `🤖 Nova resposta da IA com ${lastResponse.tool_calls?.length || 0} tool calls`);
             logger.debug('MessageProcessor', `🤖 Conteúdo da resposta: "${lastResponse.content?.substring(0, 100)}..."`);
             
-            // Verificar condições de parada
-            if (this._shouldStopToolCycle(lastResponse)) {
-              logger.debug('MessageProcessor', '🛑 Condição de parada atingida após nova chamada IA');
-              break;
-            }
+            // Não interromper aqui - deixar que as tools sejam executadas no próximo ciclo
           } catch (error) {
             logger.error('MessageProcessor', 'Erro ao fazer nova chamada à IA:', error);
             break;
@@ -362,28 +360,6 @@ class MessageProcessor {
     logger.debug('MessageProcessor', '🔍 Verificando necessidade de fallback final...');
     // Fallback final se não houve resposta send_message
     await this._handleFinalFallback(messages, data);
-  }
-
-  /**
-   * Verifica se deve parar o ciclo de ferramentas
-   * @private
-   */
-  static _shouldStopToolCycle(lastResponse) {
-    // Parar apenas se send_message foi executado (resposta final ao usuário)
-    if (lastResponse.tool_calls && lastResponse.tool_calls.some(tc => tc.function.name === 'send_message')) {
-      logger.debug('MessageProcessor', 'Send_message detectado - encerrando ciclo de ferramentas');
-      return true;
-    }
-    
-    // Não há tool_calls - pode continuar para permitir novas chamadas de IA
-    if (!lastResponse.tool_calls || lastResponse.tool_calls.length === 0) {
-      logger.debug('MessageProcessor', 'Sem tool_calls - permitindo nova iteração da IA');
-      return false;
-    }
-    
-    // Continuar o ciclo para permitir que a IA faça novas chamadas após executar tools
-    logger.debug('MessageProcessor', 'Tools executadas - permitindo nova iteração da IA');
-    return false;
   }
 
   /**

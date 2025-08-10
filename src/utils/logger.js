@@ -79,9 +79,9 @@ class Logger {
     // Mostrar no console - informação importante
     const elapsedTime = this.getElapsedTime();
     const sessionTime = this.getSessionElapsedTime();
-    console.log(`🔧 [${this.getCurrentMessageId()}|${++this.interactionCount}] TOOL START: ${toolName} (ID: ${toolId}) +${elapsedTime}ms (session: ${sessionTime}ms)`);
+    console.log(`🔧 [${this.getCurrentMessageId()}|${++this.interactionCount}] TOOL START: ${toolName} +${elapsedTime}ms`);
     
-    // Log completo no arquivo
+    // Log completo no arquivo (com todos os dados)
     this.info(`TOOL-START-${toolName}`, `Iniciando execução da ferramenta ${toolName}`, {
       toolId,
       args: args,
@@ -105,8 +105,8 @@ class Logger {
     const sessionTime = this.getSessionElapsedTime();
     
     if (error) {
-      // Erro na tool - mostrar no console
-      console.error(`🔴 [${this.getCurrentMessageId()}|${this.interactionCount}] TOOL ERROR: ${toolName} (${executionTime}ms) - ${error}`);
+      // Erro na tool - mostrar no console (sem dados detalhados)
+      console.error(`🔴 [${this.getCurrentMessageId()}|${this.interactionCount}] TOOL ERROR: ${toolName} (${executionTime}ms)`);
       this.error(`TOOL-ERROR-${toolName}`, `Erro na execução da ferramenta ${toolName}`, {
         toolId,
         executionTime,
@@ -114,9 +114,8 @@ class Logger {
         sessionTime
       });
     } else {
-      // Sucesso na tool - mostrar no console
-      const resultPreview = typeof result === 'string' ? result.substring(0, 100) + '...' : 'success';
-      console.log(`✅ [${this.getCurrentMessageId()}|${this.interactionCount}] TOOL END: ${toolName} (${executionTime}ms) → ${resultPreview}`);
+      // Sucesso na tool - mostrar no console (sem dados detalhados)
+      console.log(`✅ [${this.getCurrentMessageId()}|${this.interactionCount}] TOOL END: ${toolName} (${executionTime}ms)`);
       
       this.info(`TOOL-END-${toolName}`, `Ferramenta ${toolName} executada com sucesso`, {
         toolId,
@@ -158,14 +157,13 @@ class Logger {
 
   // Determinar se step deve aparecer no console
   shouldShowStep(component, stepName) {
+    // Apenas steps realmente importantes do fluxo principal
     const importantSteps = [
-      'Iniciando processamento',
-      'Mensagem autorizada',
-      'STM concluído',
-      'IA analysis concluída', 
-      'Resposta principal gerada',
-      'Ferramentas executadas',
-      'Processamento concluído'
+      'Processamento de mensagem iniciado',
+      'Mensagem autorizada para processamento', 
+      'Processamento da mensagem concluído',
+      'Iniciando ciclo de ferramentas',
+      'Gerando resposta principal da IA'
     ];
     
     return importantSteps.some(step => stepName.includes(step));
@@ -191,19 +189,19 @@ class Logger {
       ...(data && { data })
     };
 
-    // Escrever no arquivo
+    // Escrever no arquivo (sempre com dados completos)
     this.writeToFile(level, logEntry);
     
-    // Mostrar no console baseado na importância
+    // Mostrar no console baseado na importância (apenas mensagem básica, dados vão apenas para arquivo)
     if (this.shouldShowInConsole(level, component, message)) {
       const consoleMessage = `[${messageId}|${this.interactionCount}] ${component}: ${message} (+${elapsedTime}ms)`;
       
       if (level === LOG_LEVELS.ERROR) {
-        console.error(`🔴 ${consoleMessage}`, data || '');
+        console.error(`🔴 ${consoleMessage}`);
       } else if (level === LOG_LEVELS.WARN) {
-        console.warn(`🟡 ${consoleMessage}`, data || '');
+        console.warn(`🟡 ${consoleMessage}`);
       } else {
-        console.log(`🔵 ${consoleMessage}`, data || '');
+        console.log(`🔵 ${consoleMessage}`);
       }
     }
   }
@@ -219,18 +217,21 @@ class Logger {
     const safeMessage = typeof message === 'string' ? message : '';
     const safeComponent = typeof component === 'string' ? component : '';
     
-    // Sempre mostrar logs importantes do fluxo principal
+    // Mostrar apenas logs realmente importantes do fluxo principal
     const criticalPatterns = [
-      'ERRO CRÍTICO', 'CRITICAL', 'Fallback', 'Mensagem autorizada',
-      'MILESTONE', 'START', 'END', 'TOOL-START', 'TOOL-END', 'TOOL-ERROR',
-      'Iniciando processamento', 'Processamento concluído', 'Resposta principal gerada',
-      'STM concluído', 'Ferramentas executadas', 'OpenAI Response', 'Ollama Response'
+      'ERRO CRÍTICO', 'CRITICAL', 'Fallback', 'webhook-received'
     ];
     
-    // Componentes importantes que sempre aparecem
+    // Componentes que devem aparecer no console (mais restritivo)
     const criticalComponents = [
-      'MessageProcessor', 'MCPToolExecutor', 'STMManager', 'AIAnalysisHandler',
-      'TIMING', 'STEP', 'AI-RESPONSE'
+      'STEP-MessageProcessor', // Apenas steps principais do MessageProcessor
+      'MILESTONE-', // Milestones são importantes
+      'START-', // Início de operações
+      'END-', // Fim de operações
+      'TOOL-START', 'TOOL-END', 'TOOL-ERROR', // Tools
+      'SYSTEM-', // Status de sistemas
+      'INTERACTION-Webhook', // Apenas webhooks
+      'AI-RESPONSE-' // Respostas da IA
     ];
     
     return criticalPatterns.some(pattern => 
@@ -321,52 +322,95 @@ class Logger {
     this.writeToFile('debug', logEntry);
   }
 
-  // Método para marcar marcos importantes na operação (sempre no console)
+  // Método para marcar marcos importantes na operação (sempre no console - apenas mensagem básica)
   milestone(component, message, data = null) {
     const elapsedTime = this.getElapsedTime();
     const sessionTime = this.getSessionElapsedTime();
     
-    // Sempre mostrar milestones no console
-    console.log(`🎯 [${this.getCurrentMessageId()}|${this.interactionCount}] MILESTONE ${component}: ${message} (+${elapsedTime}ms)`);
+    // Sempre mostrar milestones no console (sem dados detalhados)
+    console.log(`🎯 [${this.getCurrentMessageId()}|${this.interactionCount}] MILESTONE-${component}: ${message} (+${elapsedTime}ms)`);
     
-    this.info(`MILESTONE-${component}`, `🎯 ${message}`, {
-      ...data,
-      sessionTime: `${sessionTime}ms`
-    });
+    // Dados completos vão apenas para o arquivo - NÃO usar info() para evitar duplicação
+    const timestamp = new Date().toISOString();
+    const logEntry = {
+      timestamp,
+      messageId: this.getCurrentMessageId(),
+      interactionCount: this.interactionCount,
+      elapsedTime: `+${elapsedTime}ms`,
+      sessionTime: `${sessionTime}ms`,
+      level: 'INFO',
+      component: `MILESTONE-${component}`,
+      message: `🎯 ${message}`,
+      activeTools: this.toolStack.map(t => t.name),
+      data: {
+        ...data,
+        sessionTime: `${sessionTime}ms`
+      }
+    };
+    this.writeToFile('info', logEntry);
   }
 
-  // Método para logs de início de operação (sempre no console)
+  // Método para logs de início de operação (sempre no console - apenas mensagem básica)
   start(component, operation, data = null) {
     const sessionTime = this.getSessionElapsedTime();
-    console.log(`🚀 [${this.getCurrentMessageId()}|${++this.interactionCount}] START ${component}: ${operation} (session: ${sessionTime}ms)`);
+    console.log(`🚀 [${this.getCurrentMessageId()}|${++this.interactionCount}] START-${component}: ${operation}`);
     
-    this.info(`START-${component}`, `🚀 ${operation}`, {
-      ...data,
-      sessionTime: `${sessionTime}ms`
-    });
+    // Dados completos vão apenas para o arquivo - NÃO usar info() para evitar duplicação
+    const timestamp = new Date().toISOString();
+    const logEntry = {
+      timestamp,
+      messageId: this.getCurrentMessageId(),
+      interactionCount: this.interactionCount,
+      elapsedTime: `+0ms`,
+      sessionTime: `${sessionTime}ms`,
+      level: 'INFO',
+      component: `START-${component}`,
+      message: `🚀 ${operation}`,
+      activeTools: this.toolStack.map(t => t.name),
+      data: {
+        ...data,
+        sessionTime: `${sessionTime}ms`
+      }
+    };
+    this.writeToFile('info', logEntry);
   }
 
-  // Método para logs de fim de operação (sempre no console)  
+  // Método para logs de fim de operação (sempre no console - apenas mensagem básica)  
   end(component, operation, data = null) {
     const elapsedTime = this.getElapsedTime();
     const sessionTime = this.getSessionElapsedTime();
     
-    console.log(`✅ [${this.getCurrentMessageId()}|${this.interactionCount}] END ${component}: ${operation} (+${elapsedTime}ms | session: ${sessionTime}ms)`);
+    console.log(`✅ [${this.getCurrentMessageId()}|${this.interactionCount}] END-${component}: ${operation} - TEMPO TOTAL: ${elapsedTime}ms`);
     
-    this.info(`END-${component}`, `✅ ${operation}`, {
-      ...data,
-      totalTime: `${elapsedTime}ms`,
-      sessionTime: `${sessionTime}ms`
-    });
+    // Dados completos vão apenas para o arquivo - NÃO usar info() para evitar duplicação
+    const timestamp = new Date().toISOString();
+    const logEntry = {
+      timestamp,
+      messageId: this.getCurrentMessageId(),
+      interactionCount: this.interactionCount,
+      elapsedTime: `+${elapsedTime}ms`,
+      sessionTime: `${sessionTime}ms`,
+      level: 'INFO',
+      component: `END-${component}`,
+      message: `✅ ${operation}`,
+      activeTools: this.toolStack.map(t => t.name),
+      data: {
+        ...data,
+        totalTime: `${elapsedTime}ms`,
+        sessionTime: `${sessionTime}ms`
+      }
+    };
+    this.writeToFile('info', logEntry);
   }
 
-  // Método para logs de falha crítica (sempre no console)
+  // Método para logs de falha crítica (sempre no console - apenas mensagem básica)
   critical(component, message, data = null) {
     const elapsedTime = this.getElapsedTime();
     const sessionTime = this.getSessionElapsedTime();
     
-    console.error(`🆘 [${this.getCurrentMessageId()}|${this.interactionCount}] CRITICAL ${component}: ${message} (+${elapsedTime}ms)`);
+    console.error(`🆘 [${this.getCurrentMessageId()}|${this.interactionCount}] CRITICAL-${component}: ${message} (+${elapsedTime}ms)`);
     
+    // Dados completos vão apenas para o arquivo
     this.error(`CRITICAL-${component}`, `🆘 ${message}`, {
       ...data,
       sessionTime: `${sessionTime}ms`
@@ -392,12 +436,13 @@ class Logger {
       timing: timing || null
     };
     
-    // Mostrar no console info resumida da resposta da IA
+    // Mostrar no console info resumida da resposta da IA (sem dados completos)
     const toolsInfo = responseInfo.toolCallsCount > 0 
       ? ` | Tools: ${responseInfo.toolNames.join(', ')}` 
       : '';
-    console.log(`🤖 [${messageId}|${this.interactionCount}] AI RESPONSE ${provider}: ${responseInfo.contentLength}chars${toolsInfo} (+${elapsedTime}ms)`);
+    console.log(`🤖 [${messageId}|${this.interactionCount}] AI-RESPONSE-${provider}: ${responseInfo.contentLength}chars${toolsInfo} (+${elapsedTime}ms)`);
     
+    // Dados completos vão apenas para o arquivo - NÃO usar writeToFile via info() para evitar duplicação
     const logEntry = {
       timestamp,
       messageId,
@@ -414,22 +459,36 @@ class Logger {
     this.writeToFile('info', logEntry);
   }
 
-  // Método para logs de timing importantes
+  // Método para logs de timing importantes (apenas mensagem básica no console)
   timing(component, message, data = null) {
     const elapsedTime = this.getElapsedTime();
     const sessionTime = this.getSessionElapsedTime();
     
-    // Mostrar timings importantes no console
-    console.log(`⏱️ [${this.getCurrentMessageId()}|${this.interactionCount}] TIMING ${component}: ${message} (+${elapsedTime}ms | session: ${sessionTime}ms)`);
+    // Mostrar timings importantes no console (sem dados detalhados)
+    console.log(`⏱️ [${this.getCurrentMessageId()}|${this.interactionCount}] TIMING-${component}: ${message} (+${elapsedTime}ms)`);
     
-    this.info(`TIMING-${component}`, message, {
-      ...data,
-      totalTime: `${elapsedTime}ms`,
-      sessionTime: `${sessionTime}ms`
-    });
+    // Dados completos vão apenas para o arquivo - NÃO usar info() para evitar duplicação
+    const timestamp = new Date().toISOString();
+    const logEntry = {
+      timestamp,
+      messageId: this.getCurrentMessageId(),
+      interactionCount: this.interactionCount,
+      elapsedTime: `+${elapsedTime}ms`,
+      sessionTime: `${sessionTime}ms`,
+      level: 'INFO',
+      component: `TIMING-${component}`,
+      message,
+      activeTools: this.toolStack.map(t => t.name),
+      data: {
+        ...data,
+        totalTime: `${elapsedTime}ms`,
+        sessionTime: `${sessionTime}ms`
+      }
+    };
+    this.writeToFile('info', logEntry);
   }
 
-  // Método para compatibilidade com a função logError antiga
+  // Método para compatibilidade com a função logError antiga (apenas mensagem básica no console)
   logError(error, context = '') {
     const errorInfo = {
       message: error.message,
@@ -439,28 +498,43 @@ class Logger {
       context
     };
     
-    // Mostrar erro no console
+    // Mostrar erro no console (sem dados detalhados)
     const elapsedTime = this.getElapsedTime();
     console.error(`🔴 [${this.getCurrentMessageId()}|${this.interactionCount}] ERROR: ${context}: ${error.message} (+${elapsedTime}ms)`);
     
+    // Dados completos vão apenas para o arquivo
     this.error('ERROR', `${context}: ${error.message}`, errorInfo);
   }
 
-  // Método para logar interações específicas (como webhooks, etc)
+  // Método para logar interações específicas (apenas mensagem básica no console)
   interaction(component, type, data = null) {
     this.interactionCount++;
     const sessionTime = this.getSessionElapsedTime();
     
-    console.log(`🔄 [${this.getCurrentMessageId()}|${this.interactionCount}] INTERACTION ${component}: ${type} (session: ${sessionTime}ms)`);
+    console.log(`🔄 [${this.getCurrentMessageId()}|${this.interactionCount}] INTERACTION-${component}: ${type}`);
     
-    this.info(`INTERACTION-${component}`, type, {
-      ...data,
+    // Dados completos vão apenas para o arquivo - NÃO usar info() para evitar duplicação
+    const timestamp = new Date().toISOString();
+    const logEntry = {
+      timestamp,
+      messageId: this.getCurrentMessageId(),
       interactionCount: this.interactionCount,
-      sessionTime: `${sessionTime}ms`
-    });
+      elapsedTime: `+0ms`,
+      sessionTime: `${sessionTime}ms`,
+      level: 'INFO',
+      component: `INTERACTION-${component}`,
+      message: type,
+      activeTools: this.toolStack.map(t => t.name),
+      data: {
+        ...data,
+        interactionCount: this.interactionCount,
+        sessionTime: `${sessionTime}ms`
+      }
+    };
+    this.writeToFile('info', logEntry);
   }
 
-  // Método para logar status de sistemas externos (MCP, OpenAI, etc)
+  // Método para logar status de sistemas externos (apenas mensagem básica no console)
   systemStatus(system, status, details = null) {
     const elapsedTime = this.getElapsedTime();
     const sessionTime = this.getSessionElapsedTime();
@@ -473,13 +547,27 @@ class Logger {
       'error': '💥'
     }[status] || '⚪';
     
-    console.log(`${statusEmoji} [${this.getCurrentMessageId()}|${this.interactionCount}] SYSTEM ${system}: ${status.toUpperCase()} (+${elapsedTime}ms)`);
+    console.log(`${statusEmoji} [${this.getCurrentMessageId()}|${this.interactionCount}] SYSTEM-${system}: ${status.toUpperCase()} (+${elapsedTime}ms)`);
     
-    this.info(`SYSTEM-${system}`, `${status.toUpperCase()}`, {
-      ...details,
-      systemStatus: status,
-      sessionTime: `${sessionTime}ms`
-    });
+    // Dados completos vão apenas para o arquivo - NÃO usar info() para evitar duplicação
+    const timestamp = new Date().toISOString();
+    const logEntry = {
+      timestamp,
+      messageId: this.getCurrentMessageId(),
+      interactionCount: this.interactionCount,
+      elapsedTime: `+${elapsedTime}ms`,
+      sessionTime: `${sessionTime}ms`,
+      level: 'INFO',
+      component: `SYSTEM-${system}`,
+      message: status.toUpperCase(),
+      activeTools: this.toolStack.map(t => t.name),
+      data: {
+        ...details,
+        systemStatus: status,
+        sessionTime: `${sessionTime}ms`
+      }
+    };
+    this.writeToFile('info', logEntry);
   }
 }
 
