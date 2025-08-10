@@ -24,3 +24,12 @@ export async function updateUserContext(userId, contextData) {
     { upsert: true }
   );
 }
+
+export async function clearUserContext(userId) {
+  const db = await connectToDb();
+  await db.collection(COLLECTION).updateOne(
+    { userId },
+    { $set: { context: { messages: [] }, updatedAt: new Date() } },
+    { upsert: true }
+  );
+}

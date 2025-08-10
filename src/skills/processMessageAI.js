@@ -126,6 +126,9 @@ const SYSTEM_PROMPT = {
 2. **Múltiplas Mensagens:** Você pode chamar a função 'send_message' várias vezes em sequência para quebrar suas respostas em mensagens menores e mais dinâmicas, se apropriado.
 3. **NÃO RESPONDA DIRETAMENTE:** Se você tiver uma resposta para o usuário, mas não usar 'send_message', sua resposta NÃO SERÁ ENTREGUE. Isso é um erro crítico.
 
+**PROCESSAMENTO AUTOMÁTICO DE IMAGENS:**
+Quando o usuário envia uma imagem, ela é automaticamente analisada e a análise é incluída no contexto da conversa. Você deve responder com base tanto na mensagem do usuário (se houver) quanto na análise automática da imagem que estará presente no contexto.
+
 Para buscar informações na web, siga este processo em duas etapas:
 1. **Descubra:** Use a função 'web_search' com uma query de busca (ex: "melhores restaurantes em São Paulo") para encontrar URLs relevantes.
 2. **Extraia:** Analise os resultados da busca, escolha a URL mais promissora e use a função 'browse' para extrair as informações daquela página específica. **NUNCA use 'browse' em URLs de motores de busca (Bing, Google, etc.).**
@@ -158,9 +161,41 @@ export default async function processMessage(message) {
     // Feedback imediato: simular digitação no início para mostrar que o bot está "vivo"
     simulateTyping(data.from, true); // Não aguardar - executar em background
     
-    const userContent = (data.body || (data.type === 'image' ? 'Analyze this image' : ''))
-      .replace(process.env.WHATSAPP_NUMBER, '')
-      .trim();
+    // Detectar e processar imagens automaticamente
+    let userContent = '';
+    let imageAnalysisResult = '';
+    
+    if (data.type === 'image') {
+      logger.info('ProcessMessage', 'Imagem detectada - iniciando análise automática');
+      
+      try {
+        // Analisar a imagem automaticamente
+        const analysisPrompt = 'Analyze the attached image and provide a concise description of content, composition, possible genre, notable details, and any safety or quality concerns.';
+        logger.debug('ProcessMessage', `Iniciando análise de imagem com prompt: ${analysisPrompt}`);
+        
+        const imageAnalysis = await analyzeImage({ id: data.id, prompt: analysisPrompt });
+        
+        if (imageAnalysis && !imageAnalysis.error) {
+          imageAnalysisResult = typeof imageAnalysis === 'string' ? imageAnalysis : imageAnalysis.content || 'Análise realizada com sucesso';
+          logger.info('ProcessMessage', 'Análise de imagem concluída com sucesso');
+          
+          // Construir o conteúdo da mensagem com a análise
+          userContent = data.body ? 
+            `${data.body}\n\n[Análise automática da imagem: ${imageAnalysisResult}]` : 
+            `Usuário enviou uma imagem.\n\n[Análise automática: ${imageAnalysisResult}]`;
+        } else {
+          logger.error('ProcessMessage', 'Erro na análise de imagem:', imageAnalysis?.error || 'Erro desconhecido');
+          userContent = data.body || 'Usuário enviou uma imagem, mas ocorreu um erro na análise automática.';
+        }
+      } catch (error) {
+        logger.error('ProcessMessage', 'Exceção durante análise automática de imagem:', error);
+        userContent = data.body || 'Usuário enviou uma imagem, mas ocorreu um erro na análise automática.';
+      }
+    } else {
+      userContent = data.body || '';
+    }
+    
+    userContent = userContent.replace(process.env.WHATSAPP_NUMBER, '').trim();
     const userId = data.from.replace('@c.us', '');
     
     stepTime = Date.now();
@@ -250,7 +285,7 @@ export default async function processMessage(message) {
     logger.debug('ProcessMessage', 'Construindo prompt dinâmico...');
     const dynamicPrompt = {
       role: 'system',
-      content: `Você é um assistente que pode responder perguntas, gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias como Mega-Sena, Quina e Lotofácil.\n\nIMPORTANTE: Ao usar ferramentas (functions/tools), siga exatamente as instruções de uso de cada função, conforme descrito no campo 'description' de cada uma.\n\nSe não tiver certeza de como usar uma função, explique o motivo e peça mais informações. Nunca ignore as instruções do campo 'description' das funções.\n\nCRÍTICO: Todas as respostas diretas ao usuário devem ser enviadas usando a ferramenta 'send_message'. Não responda diretamente.`
+      content: `Você é um assistente que pode responder perguntas, gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias como Mega-Sena, Quina e Lotofácil.\n\nIMPORTANTE: Ao usar ferramentas (functions/tools), siga exatamente as instruções de uso de cada função, conforme descrito no campo 'description' de cada uma.\n\nSe não tiver certeza de como usar uma função, explique o motivo e peça mais informações. Nunca ignore as instruções do campo 'description' das funções.\n\nCRÍTICO: Todas as respostas diretas ao usuário devem ser enviadas usando a ferramenta 'send_message'. Não responda diretamente.${imageAnalysisResult ? '\n\n⚠️ IMPORTANTE: Uma análise automática de imagem já foi realizada e incluída no contexto da conversa. NÃO use a ferramenta image_analysis_agent pois isso causaria análise duplicada.' : ''}`
     };
 
     if (userProfile) {
@@ -323,7 +358,7 @@ export default async function processMessage(message) {
       if ((lastResponse.tool_calls && lastResponse.tool_calls.length > 0) || lastResponse.function_call) {
         stepTime = Date.now();
         logger.debug('ProcessMessage', 'Executando ferramentas...');
-        messages = await toolCall(messages, { message: lastResponse }, tools, data.from, data.id, userContent);
+        messages = await toolCall(messages, { message: lastResponse }, tools, data.from, data.id, userContent, data, imageAnalysisResult);
         logger.timing('ProcessMessage', 'Ferramentas executadas');
         // Buscar a última mensagem assistant gerada
         const lastAssistantMsg = messages.filter(m => m.role === 'assistant').slice(-1)[0];
@@ -426,7 +461,7 @@ export default async function processMessage(message) {
   }
 }
 
-async function toolCall(messages, response, tools, from, id, userContent) {
+async function toolCall(messages, response, tools, from, id, userContent, messageData = null, imageAnalysisResult = '') {
   const toolStartTime = Date.now();
   logger.debug('ToolCall', 'Iniciando execução de ferramentas...');
   let newMessages = [...messages];
@@ -498,8 +533,20 @@ async function toolCall(messages, response, tools, from, id, userContent) {
           break;
 
         case 'image_analysis_agent':
-          const analysis = await analyzeImage({ ...args });
-          toolResultContent = analysis.error ? `Erro ao analisar imagem: ${analysis.error}` : `Imagem analisada com sucesso`;
+          // Verificar se já fizemos análise automática na mesma mensagem
+          if (messageData?.type === 'image' && imageAnalysisResult) {
+            toolResultContent = `Análise de imagem já foi realizada automaticamente. Resultado: ${imageAnalysisResult}`;
+            logger.info('ToolCall', 'Evitando análise duplicada - usando resultado da análise automática');
+          } else {
+            // Se não há imagem na mensagem atual, a ferramenta precisa do ID
+            const analysisArgs = { ...args };
+            if (messageData?.type === 'image' && messageData.id) {
+              analysisArgs.id = messageData.id;
+            }
+            
+            const analysis = await analyzeImage(analysisArgs);
+            toolResultContent = analysis.error ? `Erro ao analisar imagem: ${analysis.error}` : `Imagem analisada com sucesso: ${typeof analysis === 'string' ? analysis : analysis.content || 'Análise concluída'}`;
+          }
           break;
 
         case 'reminder_agent':
