@@ -84,20 +84,6 @@ export default [
   {
     type: 'function',
     function: {
-      name: 'browse',
-      description: 'Realiza navegação web genérica: abre a URL fornecida, aguarda o carregamento do body e retorna o texto completo da página. Para buscas na web, utilize sempre o Bing (https://www.bing.com/search?q=...).',
-      parameters: {
-        type: 'object',
-        properties: {
-          url: { type: 'string', description: 'Endereço da página a ser acessada pelo navegador. Para buscas, use https://www.bing.com/search?q=SEU_TERMO' }
-        },
-        required: ['url']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
       name: 'curl',
       description: 'Faz uma requisição HTTP flexível (GET, POST, etc) para uma URL, podendo enviar headers e corpo customizados. Use para acessar APIs públicas ou endpoints que retornam dados estruturados, como JSON. Não retorna HTML ou XML bruto.',
       parameters: {

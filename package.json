@@ -6,8 +6,6 @@
   "scripts": {
     "start": "node index.js",
     "dev": "npx nodemon --watch index.js --watch src --ext js,json index.js --verbose",
-    "setup:browsers": "npx playwright install",
-    "setup:browsers:chromium": "npx playwright install chromium",
     "logs": "node src/utils/logViewer.js",
     "logs:tail": "node src/utils/logViewer.js --tail",
     "logs:list": "node src/utils/logViewer.js --list",
@@ -25,7 +23,6 @@
     "@langchain/core": "^0.3.66",
     "@langchain/ollama": "^0.2.3",
     "@langchain/openai": "^0.6.3",
-    "@playwright/test": "^1.54.1",
     "axios": "^1.8.4",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
@@ -34,10 +31,6 @@
     "ical-generator": "^8.1.0",
     "mongodb": "^6.15.0",
     "ollama": "^0.5.14",
-    "playwright": "^1.54.1",
-    "puppeteer": "^24.8.2",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "uuid": "^11.1.0"
   },
   "devDependencies": {

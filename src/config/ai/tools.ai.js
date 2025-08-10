@@ -87,20 +87,6 @@ export default [
       {
         type: 'function',
         function: {
-          name: 'information_retrieval_agent',
-          description: 'Agente especializado em busca web inteligente. Este agente possui controle total sobre um navegador e pode: navegar por sites, interagir com páginas web, clicar em elementos, preencher formulários, analisar conteúdo, e extrair informações relevantes. Ele busca automaticamente informações atualizadas usando estratégias inteligentes de navegação. Use esta ferramenta sempre que precisar de informações em tempo real, dados atualizados, ou quando o conhecimento interno não for suficiente.',
-          parameters: {
-            type: 'object',
-            properties: {
-              query: { type: 'string', description: `A consulta ou pergunta do usuário para a qual você precisa buscar informações atualizadas na web. Seja específico e claro sobre o que está procurando.` }
-            },
-            required: ['query']
-          }
-        }
-      },
-      {
-        type: 'function',
-        function: {
           name: 'calendar_agent',
           description: 'Agente especializado em gerenciamento de eventos do Google Calendar. Pode criar eventos na agenda, listar próximos compromissos e gerar arquivos iCal para que o usuário possa importar em seu próprio calendário. Use esta ferramenta quando o usuário quiser agendar reuniões, criar compromissos, marcar eventos ou gerenciar sua agenda.',
           parameters: {

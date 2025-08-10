@@ -4,10 +4,6 @@ FROM node:22-slim
 # Install Python 3.12 and pip for gTTS
 RUN apt-get update && \
     apt-get install -y python3 python3-pip python3-venv \
-    # Puppeteer and Playwright dependencies
-    wget ca-certificates fonts-liberation libappindicator3-1 libasound2 libatk-bridge2.0-0 libatk1.0-0 libcups2 libdbus-1-3 libgdk-pixbuf2.0-0 libnspr4 libnss3 libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 xdg-utils \
-    # Additional dependencies for Playwright
-    libxss1 libgconf-2-4 libxtst6 libgtk-3-0 libdrm2 libxss1 libgbm1 \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
@@ -17,14 +13,11 @@ WORKDIR /usr/src/app
 # Copy package.json and package-lock.json
 COPY package*.json ./
 
-# Install dependencies (including puppeteer)
+# Install dependencies
 RUN npm install
 
 # Install nodemon globally
 RUN npm install -g nodemon
-
-# Install Playwright Chromium browser
-RUN npx playwright install chromium
 
 # Install gTTS globally for Python3
 RUN pip3 install --break-system-packages gtts

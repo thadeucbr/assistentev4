@@ -8,7 +8,6 @@ import generateImage from '../../skills/generateImage.js';
 import analyzeImage from '../../skills/analyzeImage.js';
 import lotteryCheck from '../../skills/lotteryCheck.js';
 import generateAudio from '../../skills/generateAudio.js';
-import webSearch from '../../skills/webSearch.js';
 import calendar from '../../skills/calendar.js';
 
 // Importar funções do WhatsApp
@@ -262,40 +261,6 @@ export default class ToolExecutor {
           return `Áudio gerado e enviado: "${args.query}"`;
         } else {
           return `Erro ao gerar áudio: ${audio?.error || 'Erro desconhecido'}`;
-        }
-
-      case 'information_retrieval_agent':
-        const searchResult = await webSearch(args.query);
-        if (searchResult.error) {
-          let errorMsg = `Erro na busca web: ${searchResult.error}`;
-          if (searchResult.hybridError && searchResult.fallbackError) {
-            errorMsg += `\nDetalhes - Híbrida: ${searchResult.hybridError}, Fallback: ${searchResult.fallbackError}`;
-          }
-          return errorMsg;
-        } else if (searchResult.success) {
-          const methodLabels = {
-            'simplified-playwright': '(Busca Avançada com Playwright)',
-            'fallback-direct': '(Busca Direta)',
-            'fallback-after-failure': '(Busca Robusta após falha)',
-            'last-resort-fallback': '(Último Recurso)',
-            'hybrid': '(Busca Híbrida)'
-          };
-          
-          const methodInfo = methodLabels[searchResult.method] || `(${searchResult.method})`;
-          
-          return `Busca web concluída com sucesso para "${args.query}" ${methodInfo}.
-
-RESULTADO ENCONTRADO:
-${searchResult.result}
-
-FONTES CONSULTADAS:
-${searchResult.sources && searchResult.sources.length > 0 ? 
-  searchResult.sources.map((url, index) => `${index + 1}. ${url}`).join('\n') : 
-  'Nenhuma fonte específica listada'}
-
-Esta informação foi obtida através de busca web automatizada${searchResult.method.includes('playwright') ? ' com navegação inteligente' : ''}.`;
-        } else {
-          return `Busca realizada para "${args.query}", mas formato de resposta inesperado: ${JSON.stringify(searchResult)}`;
         }
 
       case 'calendar_agent':
