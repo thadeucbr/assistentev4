@@ -1,5 +1,3 @@
-import tools from '../tools.ai.js';
-
 const OPENAI_URL = process.env.OPENAI_URL || 'https://api.openai.com/v1/chat/completions';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
@@ -115,7 +113,7 @@ export default async function openAiChat(chatMessages, toolsParam) {
     messages: chatMessages,
   };
 
-  const toolsToUse = toolsParam === undefined ? tools : (toolsParam.length > 0 ? toolsParam : undefined);
+  const toolsToUse = toolsParam && toolsParam.length > 0 ? toolsParam : undefined;
 
   if (toolsToUse) {
     body.tools = toolsToUse;
@@ -133,9 +131,29 @@ export default async function openAiChat(chatMessages, toolsParam) {
 
   if (!response.ok) {
     const errText = await response.text();
-      console.log('OpenAI chat response:', errText);
-  console.log('Body:', JSON.stringify(body));
-    throw new Error(`OpenAI chat failed: ${response.status} ${errText}`);
+    console.log('OpenAI chat response:', errText);
+    console.log('Body:', JSON.stringify(body));
+    
+    // Parse error details for better handling
+    let errorDetails;
+    try {
+      errorDetails = JSON.parse(errText);
+    } catch {
+      errorDetails = { error: { message: errText } };
+    }
+    
+    // Handle rate limits gracefully
+    if (response.status === 429) {
+      const error = new Error(`OpenAI Rate Limit: ${errorDetails.error?.message || 'Rate limit exceeded'}`);
+      error.isRateLimit = true;
+      error.statusCode = 429;
+      throw error;
+    }
+    
+    // Handle other errors
+    const error = new Error(`OpenAI chat failed: ${response.status} ${errorDetails.error?.message || errText}`);
+    error.statusCode = response.status;
+    throw error;
   }
 
   const { choices } = await response.json();

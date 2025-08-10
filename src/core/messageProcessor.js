@@ -138,10 +138,35 @@ class MessageProcessor {
     try {
       response = await chatAi(sanitizedChatMessages, dynamicTools);
       response = normalizeAiResponse(response);
+      
+      // Log da resposta da IA para análise (apenas arquivo)
+      logger.aiResponse('MessageProcessor', 'Resposta principal da IA gerada', {
+        messageContent: response.message?.content?.substring(0, 500) + '...' || 'Sem conteúdo',
+        toolCalls: response.message?.tool_calls?.length || 0,
+        hasToolCalls: !!response.message?.tool_calls,
+        responseSize: JSON.stringify(response).length
+      });
+      
       logger.timing('MessageProcessor', '🎯 Resposta principal gerada');
     } catch (error) {
       logger.error('MessageProcessor', `❌ Erro ao gerar resposta principal: ${error.message}`);
-      throw error;
+      
+      // Try to send an error message to the user instead of crashing
+      try {
+        const mcpExecutor = new MCPToolExecutor();
+        await mcpExecutor.executeTools([{
+          name: 'send_message',
+          arguments: {
+            content: `❌ Desculpe, ocorreu um erro temporário ao processar sua mensagem. Tente novamente em alguns segundos.\n\nDetalhes: ${error.message.includes('Rate limit') ? 'Limite de uso da IA atingido temporariamente.' : 'Erro interno do sistema.'}`
+          }
+        }]);
+        logger.milestone('MessageProcessor', '📤 Mensagem de erro enviada ao usuário');
+        return; // Exit gracefully
+      } catch (fallbackError) {
+        logger.error('MessageProcessor', `❌ Falha ao enviar mensagem de erro: ${fallbackError.message}`);
+      }
+      
+      throw error; // Only throw if we couldn't send error message to user
     }
 
     // Atualizar mensagens com interação atual
@@ -189,12 +214,26 @@ class MessageProcessor {
       try {
         const { data } = message;
         await simulateTyping(data.from, false);
-        // Aqui você pode adicionar um fallback para enviar uma mensagem de erro
+        
+        // Try to use MCP to send error message
+        const mcpExecutor = new MCPToolExecutor();
+        await mcpExecutor.executeTools([{
+          name: 'send_message',
+          arguments: {
+            content: `❌ Ocorreu um erro interno. Por favor, tente novamente em alguns minutos.\n\n${error.message.includes('Rate limit') ? '🕐 Sistema temporariamente sobrecarregado.' : '⚠️ Erro no processamento da mensagem.'}`
+          }
+        }]);
+        
+        logger.milestone('MessageProcessor', '📤 Mensagem de erro enviada ao usuário via MCP');
       } catch (fallbackError) {
         logger.error('MessageProcessor', `❌ Erro no fallback: ${fallbackError.message}`);
+        
+        // Last resort: log that we couldn't notify user
+        logger.error('MessageProcessor', '❌ CRÍTICO: Não foi possível notificar o usuário sobre o erro');
       }
       
-      throw error; // Re-throw para que seja capturado pelos logs gerais
+      // Don't re-throw - let the application continue running
+      logger.error('MessageProcessor', '🔄 Erro tratado - aplicação continuará executando');
     }
   }
 

@@ -87,8 +87,8 @@ export default class MCPToolExecutor {
         // Adaptar argumentos para MCP
         const mcpArgs = this.adaptArgsForMCP(toolName, args, from, messageData);
         
-        // Executar via MCP
-        const mcpResult = await this.mcpClient.callTool(toolName, mcpArgs);
+        // Executar via MCP com retry
+        const mcpResult = await this.executeWithRetry(toolName, mcpArgs);
         
         // Processar resultado do MCP
         const toolResult = this.processMCPResult(toolName, mcpResult, from);
@@ -106,11 +106,12 @@ export default class MCPToolExecutor {
       } catch (error) {
         logger.error('MCPToolExecutor', `❌ Erro ao executar "${toolName}" via MCP:`, error.message);
         
-        // Criar resposta de erro
+        // Criar resposta de erro mais informativa
+        const errorMessage = this.createErrorMessage(toolName, error);
         const errorResponse = {
           role: 'tool',
           tool_call_id: toolCall.id,
-          content: `Erro ao executar ${toolName}: ${error.message}`,
+          content: errorMessage,
         };
         
         toolResponses.push(errorResponse);
@@ -178,6 +179,57 @@ export default class MCPToolExecutor {
     }
 
     return adaptedArgs;
+  }
+
+  /**
+   * Executa uma tool via MCP com retry
+   */
+  async executeWithRetry(toolName, mcpArgs, maxRetries = 2) {
+    let lastError;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        logger.debug('MCPToolExecutor', `🔄 Tentativa ${attempt}/${maxRetries} para "${toolName}"`);
+        const result = await this.mcpClient.callTool(toolName, mcpArgs);
+        
+        if (attempt > 1) {
+          logger.milestone('MCPToolExecutor', `✅ "${toolName}" executada com sucesso na tentativa ${attempt}`);
+        }
+        
+        return result;
+      } catch (error) {
+        lastError = error;
+        logger.warn('MCPToolExecutor', `⚠️ Tentativa ${attempt}/${maxRetries} falhou para "${toolName}": ${error.message}`);
+        
+        if (attempt < maxRetries) {
+          // Aguardar antes da próxima tentativa
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        }
+      }
+    }
+    
+    throw lastError;
+  }
+
+  /**
+   * Cria uma mensagem de erro mais informativa
+   */
+  createErrorMessage(toolName, error) {
+    const errorMessage = error.message || 'Erro desconhecido';
+    
+    if (errorMessage.includes('Rate limit')) {
+      return `⏳ Temporariamente indisponível devido ao limite de uso da API. Tente novamente em alguns segundos.`;
+    }
+    
+    if (errorMessage.includes('timeout')) {
+      return `⏱️ A operação demorou mais que o esperado e foi cancelada. Tente uma consulta mais simples.`;
+    }
+    
+    if (errorMessage.includes('Resposta válida não encontrada')) {
+      return `🔧 Problema na comunicação interna. A operação será processada novamente automaticamente.`;
+    }
+    
+    return `❌ Erro ao executar ${toolName}: ${errorMessage}`;
   }
 
   /**

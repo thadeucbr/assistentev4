@@ -14,8 +14,11 @@ export async function safeSendMessage(args) {
     // Importar a função real de envio de mensagem do WhatsApp
     const { default: sendMessage } = await import('./whatsapp/sendMessage.js');
     
+    // Garantir que temos um destinatário válido
+    const recipient = args.to || args.from || process.env.DEFAULT_WHATSAPP_RECIPIENT || '5511971704940@c.us';
+    
     // Executar a função real com os parâmetros corretos
-    const result = await sendMessage(args.to || args.from, args.content, args.quotedMsgId);
+    const result = await sendMessage(recipient, args.content, args.quotedMsgId);
     
     return {
       type: 'message',

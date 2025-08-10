@@ -66,24 +66,19 @@ class Logger {
       ...(data && { data })
     };
 
-    // Escrever no arquivo
+        // Escrever no arquivo
     this.writeToFile(level, logEntry);
     
-    // Mostrar no console apenas logs importantes (ERROR e alguns INFO críticos)
-    if (level === LOG_LEVELS.ERROR || this.shouldShowInConsole(component, message)) {
+    // Mostrar no console apenas DEBUG e ERROR
+    if (level === LOG_LEVELS.ERROR) {
       const consoleMessage = `[${messageId}] ${component} ${message} (+${elapsedTime}ms)`;
-      
-      switch (level) {
-        case LOG_LEVELS.ERROR:
-          console.error(`🔴 ${consoleMessage}`, data || '');
-          break;
-        case LOG_LEVELS.WARN:
-          console.warn(`🟡 ${consoleMessage}`, data || '');
-          break;
-        case LOG_LEVELS.INFO:
-          console.log(`🔵 ${consoleMessage}`, data || '');
-          break;
-      }
+      console.error(`🔴 ${consoleMessage}`, data || '');
+    }
+    
+    // DEBUG sempre no console para desenvolvimento
+    if (level === 'debug') {
+      const consoleMessage = `[${messageId}] ${component} ${message} (+${elapsedTime}ms)`;
+      console.log(`� ${consoleMessage}`, data || '');
     }
   }
 
@@ -210,6 +205,31 @@ class Logger {
   // Método para logs de falha crítica
   critical(component, message, data = null) {
     this.error(`CRITICAL-${component}`, `🆘 ${message}`, data);
+  }
+
+  // Método especial para logar respostas da IA (apenas arquivo, não console)
+  aiResponse(component, message, responseData = null) {
+    const timestamp = new Date().toISOString();
+    const messageId = this.getCurrentMessageId();
+    const elapsedTime = this.getElapsedTime();
+    
+    const logEntry = {
+      timestamp,
+      messageId,
+      elapsedTime: `+${elapsedTime}ms`,
+      level: 'AI_RESPONSE',
+      component,
+      message,
+      responseData
+    };
+
+    // Apenas escrever no arquivo, não mostrar no console
+    this.writeToFile('info', logEntry);
+  }
+
+  // Método para logs de timing importantes (apenas arquivo)
+  timing(component, message, data = null) {
+    this.info(`TIMING-${component}`, message, data);
   }
 
   // Método para compatibilidade com a função logError antiga

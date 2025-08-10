@@ -1,7 +1,6 @@
-import tools from '../tools.ai.js';
 
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'mistral';
+const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434/api/chat';
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2:latest';
 
 function sanitizeMessagesForOllama(messages) {
   return messages.map(message => {
@@ -48,9 +47,13 @@ export default async function ollamaChat(chatMessages, toolsParam) {
   const body = {
     model: OLLAMA_MODEL,
     messages: chatMessages,
-    tools: toolsParam || tools,
     stream: false
   };
+
+  // Only add tools if provided via parameter
+  if (toolsParam && toolsParam.length > 0) {
+    body.tools = toolsParam;
+  }
 
   const response = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: 'POST',
@@ -59,9 +62,26 @@ export default async function ollamaChat(chatMessages, toolsParam) {
     },
     body: JSON.stringify(body)
   });
-const raw = await response.text();
-if (!response.ok) throw new Error(`Ollama error ${response.status}\n${raw}`);
-const payload = JSON.parse(raw);
-// console.log('Ollama response:', payload);
-return payload;
+  
+  const raw = await response.text();
+  
+  if (!response.ok) {
+    console.log('Ollama chat response:', raw);
+    
+    // Parse error details if possible
+    let errorDetails;
+    try {
+      errorDetails = JSON.parse(raw);
+    } catch {
+      errorDetails = { error: raw };
+    }
+    
+    const error = new Error(`Ollama error: ${response.status} ${errorDetails.error || raw}`);
+    error.statusCode = response.status;
+    throw error;
+  }
+  
+  const payload = JSON.parse(raw);
+  // console.log('Ollama response:', payload);
+  return payload;
 }
