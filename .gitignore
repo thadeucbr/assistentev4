@@ -1,4 +1,5 @@
 /.env
+mcp-server/.env
 node_modules
 /vector_store
 
