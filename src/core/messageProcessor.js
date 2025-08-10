@@ -7,7 +7,7 @@ import { sanitizeMessagesForChat } from './processors/messageSanitizer.js';
 import STMManager from './memory/stmManager.js';
 import ImageProcessor from './processors/imageProcessor.js';
 import DynamicPromptBuilder from './prompt/dynamicPromptBuilder.js';
-import HybridToolExecutor from './tools/HybridToolExecutor.js';
+import MCPToolExecutor from './tools/MCPToolExecutor.js';
 import MessageAuthHandler from './processors/messageAuthHandler.js';
 import AIAnalysisHandler from './processors/aiAnalysisHandler.js';
 
@@ -23,7 +23,6 @@ import simulateTyping from '../whatsapp/simulateTyping.js';
 
 // Config imports
 import chatAi from '../config/ai/chat.ai.js';
-import tools from '../config/ai/tools.ai.js';
 
 // Environment config
 const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
@@ -126,12 +125,18 @@ class MessageProcessor {
     const chatMessages = [dynamicPrompt, ...messages, { role: 'user', content: userContent }];
     const sanitizedChatMessages = sanitizeMessagesForChat(chatMessages);
     
-    // Gerar resposta principal da IA
+    // Obter ferramentas disponíveis do MCP dinamicamente
+    logger.debug('MessageProcessor', '🔧 Obtendo ferramentas do MCP dinamicamente...');
+    const mcpExecutor = new MCPToolExecutor();
+    const dynamicTools = await mcpExecutor.getToolsForOpenAI();
+    logger.milestone('MessageProcessor', `🎯 ${dynamicTools.length} ferramentas obtidas do MCP dinamicamente`);
+    
+    // Gerar resposta principal da IA com ferramentas dinâmicas
     stepTime = Date.now();
-    logger.debug('MessageProcessor', '🎯 Gerando resposta principal da IA...');
+    logger.debug('MessageProcessor', '🎯 Gerando resposta principal da IA com ferramentas dinâmicas...');
     let response;
     try {
-      response = await chatAi(sanitizedChatMessages);
+      response = await chatAi(sanitizedChatMessages, dynamicTools);
       response = normalizeAiResponse(response);
       logger.timing('MessageProcessor', '🎯 Resposta principal gerada');
     } catch (error) {
@@ -148,7 +153,7 @@ class MessageProcessor {
     logger.debug('MessageProcessor', '🔧 Iniciando ciclo de ferramentas...');
     logger.debug('MessageProcessor', `🔧 Response tem tool_calls: ${response.message.tool_calls?.length || 0}`);
     logger.debug('MessageProcessor', `🔧 Chamando _executeToolCycle...`);
-    await this._executeToolCycle(messages, response, tools, data, userContent, imageAnalysisResult);
+    await this._executeToolCycle(messages, response, dynamicTools, data, userContent, imageAnalysisResult, mcpExecutor);
     logger.debug('MessageProcessor', '🔧 Ciclo de ferramentas concluído');
 
     // Atualizações finais
@@ -197,7 +202,7 @@ class MessageProcessor {
    * Executa ciclo de ferramentas com limite de tentativas
    * @private
    */
-  static async _executeToolCycle(messages, response, tools, data, userContent, imageAnalysisResult) {
+  static async _executeToolCycle(messages, response, tools, data, userContent, imageAnalysisResult, mcpExecutor) {
     logger.debug('MessageProcessor', '🎬 === ENTRANDO EM _executeToolCycle ===');
     let toolCycleCount = 0;
     const MAX_TOOL_CYCLES = 3;
@@ -207,9 +212,6 @@ class MessageProcessor {
     const executedTools = new Set();
     
     logger.debug('MessageProcessor', `🔧 Iniciando ciclo de ferramentas - Response: ${lastResponse.content ? 'com conteúdo' : 'sem conteúdo'}, Tool calls: ${lastResponse.tool_calls?.length || 0}`);
-    
-    // Inicializar executor híbrido
-    const hybridExecutor = new HybridToolExecutor();
     
     while (toolCycleCount < MAX_TOOL_CYCLES) {
       logger.debug('MessageProcessor', `🔄 Ciclo ${toolCycleCount + 1}/${MAX_TOOL_CYCLES}`);
@@ -226,7 +228,7 @@ class MessageProcessor {
           break;
         }
         
-        const updatedMessages = await hybridExecutor.executeTools(
+        const updatedMessages = await mcpExecutor.executeTools(
           messages, 
           { message: lastResponse }, 
           tools, 

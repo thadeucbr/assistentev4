@@ -13,16 +13,12 @@ import 'dotenv/config';
 
 // Importar wrappers seguros para as skills
 import {
-  safeAnalyzeSentiment,
-  safeInferInteractionStyle,
-  safeCurl,
   safeGenerateImage,
   safeAnalyzeImage,
   safeGenerateAudio,
   safeCalendar,
   safeLotteryCheck,
   safeReminderManagement,
-  safeUserProfileUpdate,
   safeSendMessage
 } from './skill-wrappers.js';
 
@@ -102,7 +98,7 @@ class AssistenteMCPServer {
           },
           {
             name: 'audio_generation',
-            description: 'Generate audio files from text using text-to-speech',
+            description: 'Generate audio files from text using text-to-speech and optionally send via WhatsApp',
             inputSchema: {
               type: 'object',
               properties: {
@@ -117,6 +113,14 @@ class AssistenteMCPServer {
                 speed: {
                   type: 'number',
                   description: 'Speech speed (optional)'
+                },
+                sendAudio: {
+                  type: 'boolean',
+                  description: 'Whether to automatically send the generated audio via WhatsApp (default: false)'
+                },
+                to: {
+                  type: 'string',
+                  description: 'Recipient ID for audio sending (required if sendAudio is true)'
                 }
               },
               required: ['text']
@@ -171,82 +175,6 @@ class AssistenteMCPServer {
               },
               required: ['userId', 'query']
             }
-          },
-          {
-            name: 'sentiment_analysis',
-            description: 'Analyze the sentiment of text messages',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                text: {
-                  type: 'string',
-                  description: 'Text to analyze for sentiment'
-                }
-              },
-              required: ['text']
-            }
-          },
-          {
-            name: 'interaction_style_inference',
-            description: 'Infer user interaction style from their messages',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                message: {
-                  type: 'string',
-                  description: 'User message to analyze for interaction style'
-                }
-              },
-              required: ['message']
-            }
-          },
-          {
-            name: 'user_profile_update',
-            description: 'Update user profile summary based on conversation history',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                userId: {
-                  type: 'string',
-                  description: 'User ID for profile update'
-                },
-                conversationHistory: {
-                  type: 'array',
-                  description: 'Array of conversation messages',
-                  items: {
-                    type: 'object'
-                  }
-                }
-              },
-              required: ['userId', 'conversationHistory']
-            }
-          },
-          {
-            name: 'http_request',
-            description: 'Make HTTP requests to external APIs',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                url: {
-                  type: 'string',
-                  description: 'URL to make the request to'
-                },
-                method: {
-                  type: 'string',
-                  description: 'HTTP method',
-                  enum: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH']
-                },
-                headers: {
-                  type: 'object',
-                  description: 'HTTP headers'
-                },
-                body: {
-                  type: 'string',
-                  description: 'Request body (for POST, PUT, PATCH)'
-                }
-              },
-              required: ['url']
-            }
           }
         ]
       };
@@ -278,18 +206,6 @@ class AssistenteMCPServer {
             
           case 'reminder_management':
             return await this.handleReminderManagement(args);
-            
-          case 'sentiment_analysis':
-            return await this.handleSentimentAnalysis(args);
-            
-          case 'interaction_style_inference':
-            return await this.handleInteractionStyleInference(args);
-            
-          case 'user_profile_update':
-            return await this.handleUserProfileUpdate(args);
-            
-          case 'http_request':
-            return await this.handleHttpRequest(args);
             
           default:
             throw new McpError(
@@ -386,58 +302,6 @@ class AssistenteMCPServer {
 
   async handleReminderManagement(args) {
     const result = await safeReminderManagement(args);
-    
-    return {
-      content: [
-        {
-          type: 'text',
-          text: typeof result === 'string' ? result : JSON.stringify(result, null, 2)
-        }
-      ]
-    };
-  }
-
-  async handleSentimentAnalysis(args) {
-    const result = await safeAnalyzeSentiment(args.text);
-    
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(result, null, 2)
-        }
-      ]
-    };
-  }
-
-  async handleInteractionStyleInference(args) {
-    const result = await safeInferInteractionStyle(args.message);
-    
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(result, null, 2)
-        }
-      ]
-    };
-  }
-
-  async handleUserProfileUpdate(args) {
-    const result = await safeUserProfileUpdate(args);
-    
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(result, null, 2)
-        }
-      ]
-    };
-  }
-
-  async handleHttpRequest(args) {
-    const result = await safeCurl(args);
     
     return {
       content: [
