@@ -11,6 +11,9 @@ import MCPToolExecutor from './tools/MCPToolExecutor.js';
 import MessageAuthHandler from './processors/messageAuthHandler.js';
 import AIAnalysisHandler from './processors/aiAnalysisHandler.js';
 
+// Personality system
+import PersonalityOrchestrator from './personality/PersonalityOrchestrator.js';
+
 // Repository imports
 import { getUserContext, updateUserContext } from '../repository/contextRepository.js';
 import { getUserProfile } from '../repository/userProfileRepository.js';
@@ -28,10 +31,29 @@ import chatAi from '../config/ai/chat.ai.js';
 const groups = JSON.parse(process.env.WHATSAPP_GROUPS) || [];
 
 /**
- * Processador principal de mensagens - Refatorado
+ * Processador principal de mensagens - Refatorado com Sistema de Personalidade Evolutiva
  * Núcleo central da aplicação que coordena todo o fluxo de processamento
  */
 class MessageProcessor {
+  // Variáveis de classe para o sistema de personalidade
+  static personalityOrchestrator = null;
+  static personalityInitialized = false;
+
+  /**
+   * Inicializa o sistema de personalidade (lazy loading)
+   * @private
+   */
+  static async _ensurePersonalityInitialized() {
+    if (!this.personalityOrchestrator) {
+      this.personalityOrchestrator = new PersonalityOrchestrator();
+    }
+    
+    if (!this.personalityInitialized) {
+      await this.personalityOrchestrator.initialize();
+      this.personalityInitialized = true;
+      logger.info('MessageProcessor', '🎭 Sistema de personalidade inicializado');
+    }
+  }
   /**
    * Processa mensagem recebida
    * @param {Object} message - Mensagem recebida
@@ -60,6 +82,9 @@ class MessageProcessor {
       }
 
       logger.milestone('MessageProcessor', 'Mensagem autorizada para processamento');
+    
+      // Inicializar sistema de personalidade
+      await this._ensurePersonalityInitialized();
     
       // Feedback imediato: simular digitação no início
       simulateTyping(data.from, true); // Não aguardar - executar em background
@@ -121,18 +146,101 @@ class MessageProcessor {
         throw error;
       }
 
-      // Executar análises de IA
+            // Executar análises de IA
       simulateTyping(data.from, true);
       logger.step('MessageProcessor', '🤖 Iniciando análises de IA');
+      let currentSentiment, inferredStyle;
       try {
-        const { currentSentiment, inferredStyle } = await AIAnalysisHandler.performAIAnalysis(userContent, userId, userProfile);
+        const aiAnalysis = await AIAnalysisHandler.performAIAnalysis(userContent, userId, userProfile);
+        currentSentiment = aiAnalysis.currentSentiment;
+        inferredStyle = aiAnalysis.inferredStyle;
         logger.timing('MessageProcessor', '🤖 Análises de IA concluídas', {
           sentiment: currentSentiment,
           style: inferredStyle
         });
       } catch (error) {
         logger.error('MessageProcessor', `Erro nas análises de IA: ${error.message}`);
-        // Não interromper o fluxo por erro nas análises
+        // Valores padrão em caso de erro
+        currentSentiment = 'neutro';
+        inferredStyle = 'neutral';
+      }
+
+      // 🎭 PROCESSAMENTO DA PERSONALIDADE EVOLUTIVA
+      logger.step('MessageProcessor', '🎭 Processando evolução da personalidade');
+      logger.debug('MessageProcessor', '🎭 ENTRADA PERSONALIDADE:', {
+        userId,
+        contentLength: userContent?.length || 0,
+        currentSentiment,
+        messageType: data.messageType || 'text',
+        hasImage: !!data.image,
+        conversationLength: messages.length
+      });
+      
+      try {
+        const personalityResult = await this.personalityOrchestrator.processPersonalityInteraction(
+          userId, 
+          userContent, 
+          currentSentiment, 
+          {
+            messageType: data.messageType || 'text',
+            hasImage: !!data.image,
+            inferredStyle,
+            conversationLength: messages.length
+          }
+        );
+        
+        logger.debug('MessageProcessor', '🎭 RESULTADO PERSONALIDADE:', {
+          mood: personalityResult.mood,
+          formationLevel: personalityResult.personality_formation,
+          evolutionApplied: personalityResult.evolution_applied
+        });
+        
+        logger.timing('MessageProcessor', '🎭 Personalidade evolutiva processada');
+      } catch (error) {
+        logger.error('MessageProcessor', `Erro no processamento da personalidade: ${error.message}`);
+        // Continuar o fluxo mesmo com erro na personalidade
+      }
+
+      // 🏗️ CONSTRUIR PROMPT EVOLUTIVO (substituindo o prompt dinâmico básico)
+      logger.step('MessageProcessor', '🏗️ Construindo prompt evolutivo');
+      let personalityMetadata;
+      try {
+        const situationType = this._determineSituationType(messages, userContent);
+        logger.debug('MessageProcessor', '🏗️ ENTRADA BUILD PROMPT:', {
+          userId,
+          hasProfile: !!userProfile,
+          ltmContextLength: ltmContext?.length || 0,
+          hasImageAnalysis: !!imageAnalysisResult,
+          situationType
+        });
+        
+        const promptResult = await this.personalityOrchestrator.buildPersonalityPrompt(
+          userId, 
+          userProfile, 
+          ltmContext, 
+          imageAnalysisResult,
+          situationType
+        );
+        dynamicPrompt = promptResult.prompt;
+        personalityMetadata = promptResult.personalityMetadata;
+        
+        logger.debug('MessageProcessor', '🏗️ PROMPT RESULT:', {
+          promptLength: dynamicPrompt?.content?.length || 0,
+          mood: personalityMetadata.mood,
+          formationLevel: personalityMetadata.formation_level,
+          adaptiveBehaviors: personalityMetadata.adaptive_behaviors?.length || 0
+        });
+        
+        logger.timing('MessageProcessor', '🏗️ Prompt evolutivo construído', {
+          mood: personalityMetadata.mood,
+          formationLevel: personalityMetadata.formation_level,
+          familiarityLevel: personalityMetadata.familiarity_level
+        });
+      } catch (error) {
+        logger.error('MessageProcessor', `Erro na construção do prompt evolutivo: ${error.message}`);
+        // Fallback para prompt básico
+        dynamicPrompt = DynamicPromptBuilder.buildDynamicPrompt(userProfile, ltmContext, imageAnalysisResult);
+        personalityMetadata = { mood: 'neutral', formation_level: 0, familiarity_level: 0 };
       }
 
       // Preparar mensagens para chat
@@ -523,6 +631,37 @@ class MessageProcessor {
     } else {
       logger.debug('MessageProcessor', '✅ Send_message encontrado - não precisa de fallback');
     }
+  }
+
+  /**
+   * Determina o tipo de situação para personalização contextual
+   * @private
+   */
+  static _determineSituationType(messages, userContent) {
+    // Primeira interação
+    if (messages.length === 0) {
+      return 'first_interaction';
+    }
+
+    // Tarefa criativa
+    const creativeKeywords = ['criar', 'gerar', 'desenhar', 'imagem', 'arte', 'criativo', 'inventar'];
+    if (creativeKeywords.some(keyword => userContent.toLowerCase().includes(keyword))) {
+      return 'creative_task';
+    }
+
+    // Suporte emocional
+    const emotionalKeywords = ['triste', 'feliz', 'ansioso', 'preocupado', 'deprimido', 'estressado', 'ajuda', 'como você se sente'];
+    if (emotionalKeywords.some(keyword => userContent.toLowerCase().includes(keyword))) {
+      return 'emotional_support';
+    }
+
+    // Recuperação de erro
+    const errorKeywords = ['erro', 'problema', 'não funciona', 'bug', 'falha', 'ajuda urgente'];
+    if (errorKeywords.some(keyword => userContent.toLowerCase().includes(keyword))) {
+      return 'error_recovery';
+    }
+
+    return null; // Situação normal
   }
 }
 
