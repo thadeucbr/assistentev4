@@ -71,16 +71,6 @@ class AIResponseProcessor {
     return DynamicPromptBuilder.buildDynamicPrompt(userProfile, ltmContext, imageAnalysisResult);
   }
 
-  /**
-   * Cria metadados de personalidade padrão para fallback
-   */
-  static createFallbackPersonalityMetadata() {
-    return { 
-      mood: 'neutral', 
-      formation_level: 0, 
-      familiarity_level: 0 
-    };
-  }
 }
 
 export default AIResponseProcessor;

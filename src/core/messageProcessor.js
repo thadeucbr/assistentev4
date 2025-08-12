@@ -1,7 +1,6 @@
 import logger from '../utils/logger.js';
 
 // Core processors
-import PersonalityProcessor from './processors/personalityProcessor.js';
 import UserDataProcessor from './processors/userDataProcessor.js';
 import AIResponseProcessor from './processors/aiResponseProcessor.js';
 
@@ -54,7 +53,7 @@ class MessageProcessor {
       logger.milestone('MessageProcessor', 'Mensagem autorizada para processamento');
 
       // === FASE 2: INICIALIZAÇÃO ===
-      await PersonalityProcessor.ensureInitialized();
+      // Sistema de personalidade removido - usando fallback simples
       
       // Feedback imediato: simular digitação
       simulateTyping(data.from, true);
@@ -68,32 +67,16 @@ class MessageProcessor {
       const { currentSentiment, inferredStyle } = await UserDataProcessor.performAIAnalysis(userContent, userId, userProfile);
 
       // === FASE 5: PERSONALIDADE EVOLUTIVA ===
-      const personalityMetadata = {
-        messageType: data.messageType || 'text',
-        hasImage: !!data.image,
-        inferredStyle,
-        conversationLength: messages.length
-      };
-
-      try {
-        await PersonalityProcessor.processPersonalityInteraction(userId, userContent, currentSentiment, personalityMetadata);
-      } catch (error) {
-        logger.error('MessageProcessor', `Erro na personalidade (continuando): ${error.message}`);
-      }
+      // Sistema de personalidade removido - continuando sem processamento de personalidade
 
       // === FASE 6: CONSTRUÇÃO DE PROMPT ===
-      let dynamicPrompt, personalityMeta;
+      let dynamicPrompt;
       try {
         const situationType = ContextAnalyzer.determineSituationType(messages, userContent);
-        const promptResult = await PersonalityProcessor.buildPersonalityPrompt(
-          userId, userProfile, ltmContext, imageAnalysisResult, situationType
-        );
-        dynamicPrompt = promptResult.prompt;
-        personalityMeta = promptResult.personalityMetadata;
-      } catch (error) {
-        logger.error('MessageProcessor', `Erro no prompt evolutivo (usando fallback): ${error.message}`);
         dynamicPrompt = AIResponseProcessor.createFallbackPrompt(userProfile, ltmContext, imageAnalysisResult);
-        personalityMeta = AIResponseProcessor.createFallbackPersonalityMetadata();
+      } catch (error) {
+        logger.error('MessageProcessor', `Erro no prompt (usando fallback): ${error.message}`);
+        dynamicPrompt = AIResponseProcessor.createFallbackPrompt(userProfile, ltmContext, imageAnalysisResult);
       }
 
       // === FASE 7: PREPARAÇÃO E GERAÇÃO DE RESPOSTA ===
