@@ -31,33 +31,45 @@ export default class DynamicPromptBuilder {
     
     const dynamicPrompt = {
       role: 'system',
-      content: `Você é um assistente que pode responder perguntas, gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias como Mega-Sena, Quina e Lotofácil.\n\nIMPORTANTE: Ao usar ferramentas (functions/tools), siga exatamente as instruções de uso de cada função, conforme descrito no campo 'description' de cada uma.\n\nSe não tiver certeza de como usar uma função, explique o motivo e peça mais informações. Nunca ignore as instruções do campo 'description' das funções.\n\nCRÍTICO: Todas as respostas diretas ao usuário devem ser enviadas usando a ferramenta 'send_message'. Não responda diretamente.${imageAnalysisResult ? '\n\n⚠️ IMPORTANTE: Uma análise automática de imagem já foi realizada e incluída no contexto da conversa. NÃO use a ferramenta image_analysis_agent pois isso causaria análise duplicada.' : ''}`
+      content: `Você é um assistente que pode responder perguntas, gerar imagens, analisar imagens, criar lembretes e verificar resultados de loterias como Mega-Sena, Quina e Lotofácil.
+
+IMPORTANTE: Ao usar ferramentas (functions/tools), siga exatamente as instruções de uso de cada função, conforme descrito no campo 'description' de cada uma.
+
+Se não tiver certeza de como usar uma função, explique o motivo e peça mais informações. Nunca ignore as instruções do campo 'description' das funções.
+
+CRÍTICO: Todas as respostas diretas ao usuário devem ser enviadas usando a ferramenta 'send_message'. Não responda diretamente.${imageAnalysisResult ? '\n\n⚠️ IMPORTANTE: Uma análise automática de imagem já foi realizada e incluída no contexto da conversa. NÃO use a ferramenta image_analysis_agent pois isso causaria análise duplicada.' : ''}`
     };
 
-    // Adicionar informações do perfil do usuário
+    // Adicionar informações do perfil do usuário de forma concisa
     if (userProfile) {
-      dynamicPrompt.content += `\n\n--- User Profile ---\n`;
+      const profileParts = [];
       
       if (userProfile.summary) {
-        dynamicPrompt.content += `Resumo: ${userProfile.summary}\n`;
+        profileParts.push(`Resumo: ${userProfile.summary}`);
       }
       
       if (userProfile.preferences) {
-        dynamicPrompt.content += `Preferências de comunicação: Tom ${userProfile.preferences.tone || 'não especificado'}, Humor ${userProfile.preferences.humor_level || 'não especificado'}, Formato de resposta ${userProfile.preferences.response_format || 'não especificado'}, Idioma ${userProfile.preferences.language || 'não especificado'}.\n`;
-      }
-      
-      if (userProfile.linguistic_markers) {
-        dynamicPrompt.content += `Marcadores linguísticos: Comprimento médio da frase ${userProfile.linguistic_markers.avg_sentence_length || 'não especificado'}, Formalidade ${userProfile.linguistic_markers.formality_score || 'não especificado'}, Usa emojis ${userProfile.linguistic_markers.uses_emojis !== undefined ? userProfile.linguistic_markers.uses_emojis : 'não especificado'}.\n`;
+        const prefs = [];
+        if (userProfile.preferences.tone) prefs.push(`Tom: ${userProfile.preferences.tone}`);
+        if (userProfile.preferences.humor_level) prefs.push(`Humor: ${userProfile.preferences.humor_level}`);
+        if (userProfile.preferences.language) prefs.push(`Idioma: ${userProfile.preferences.language}`);
+        if (prefs.length > 0) {
+          profileParts.push(`Preferências: ${prefs.join(', ')}`);
+        }
       }
       
       if (userProfile.key_facts && userProfile.key_facts.length > 0) {
-        dynamicPrompt.content += `Fatos importantes: ${userProfile.key_facts.map(fact => fact.fact).join('; ')}.\n`;
+        profileParts.push(`Fatos importantes: ${userProfile.key_facts.map(fact => fact.fact).join('; ')}`);
+      }
+      
+      if (profileParts.length > 0) {
+        dynamicPrompt.content += `\n\n--- Perfil do Usuário ---\n${profileParts.join('\n')}`;
       }
     }
 
     // Adicionar contexto da LTM
     if (ltmContext) {
-      dynamicPrompt.content += `\n\n--- Relevant Previous Conversations ---\n${ltmContext}`;
+      dynamicPrompt.content += `\n\n--- Conversas Anteriores Relevantes ---\n${ltmContext}`;
     }
 
     return dynamicPrompt;
