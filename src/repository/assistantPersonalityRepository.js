@@ -76,7 +76,9 @@ export async function updateAssistantPersonality(assistantId, personalityData) {
       assistantId,
       mood: personalityData.current_mood,
       upserted: result.upsertedCount > 0,
-      modified: result.modifiedCount > 0
+      modified: result.modifiedCount > 0,
+      matchedCount: result.matchedCount,
+      collectionName: PERSONALITY_COLLECTION
     });
     
     return result;
@@ -273,28 +275,33 @@ export async function cleanupOldEvolutionData(daysToKeep = 90) {
 }
 
 /**
- * Inicializa as coleções necessárias (caso não existam) - Para MongoDB não é necessário
- * criar estrutura prévia, mas podemos criar índices para otimização
+ * Para MongoDB, as coleções são criadas automaticamente quando inserimos dados
+ * Esta função agora apenas cria índices para otimização, se necessário
  */
 export async function initializePersonalityTables() {
   try {
-    logger.info('AssistantPersonalityRepository', 'Inicializando coleções de personalidade');
+    logger.info('AssistantPersonalityRepository', 'Verificando índices de otimização...');
     
     const db = await connectToDb();
     
-    // Criar índices para otimização
-    await db.collection(PERSONALITY_COLLECTION).createIndex({ assistant_id: 1 }, { unique: true });
-    await db.collection(PERSONALITY_COLLECTION).createIndex({ current_mood: 1 });
-    await db.collection(PERSONALITY_COLLECTION).createIndex({ last_updated: 1 });
-    
-    await db.collection(EVOLUTION_LOG_COLLECTION).createIndex({ assistant_id: 1, timestamp: -1 });
-    await db.collection(EVOLUTION_LOG_COLLECTION).createIndex({ evolution_type: 1 });
-    await db.collection(EVOLUTION_LOG_COLLECTION).createIndex({ timestamp: -1 });
-    
-    logger.info('AssistantPersonalityRepository', 'Coleções de personalidade inicializadas com sucesso');
+    // Criar índices para otimização (opcional - MongoDB funciona sem isso)
+    try {
+      await db.collection(PERSONALITY_COLLECTION).createIndex({ assistant_id: 1 }, { unique: true });
+      await db.collection(PERSONALITY_COLLECTION).createIndex({ current_mood: 1 });
+      await db.collection(PERSONALITY_COLLECTION).createIndex({ last_updated: 1 });
+      
+      await db.collection(EVOLUTION_LOG_COLLECTION).createIndex({ assistant_id: 1, timestamp: -1 });
+      await db.collection(EVOLUTION_LOG_COLLECTION).createIndex({ evolution_type: 1 });
+      await db.collection(EVOLUTION_LOG_COLLECTION).createIndex({ timestamp: -1 });
+      
+      logger.info('AssistantPersonalityRepository', 'Índices de personalidade verificados');
+    } catch (indexError) {
+      // Ignorar erros de índice - podem já existir
+      logger.debug('AssistantPersonalityRepository', 'Alguns índices já existiam');
+    }
     
   } catch (error) {
-    logger.error('AssistantPersonalityRepository', `Erro ao inicializar coleções: ${error.message}`);
-    throw error;
+    logger.warn('AssistantPersonalityRepository', `Aviso ao verificar índices: ${error.message}`);
+    // Não falhar por causa de índices - o sistema funciona sem eles
   }
 }

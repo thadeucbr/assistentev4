@@ -79,6 +79,19 @@ export default class PersonalityOrchestrator {
         evolutionApplied: evolutionResult.evolution_applied
       });
 
+      // 💾 SALVAR AUTOMATICAMENTE os dados após processamento
+      if (evolutionResult.evolution_applied) {
+        try {
+          await this.evolutionSystem.saveEvolutionData();
+          personalityLog('ORCHESTRATOR', 'DADOS SALVOS:', {
+            mood: evolutionResult.mood,
+            formationLevel: evolutionResult.personality_formation
+          });
+        } catch (saveError) {
+          logger.error('PersonalityOrchestrator', `Erro ao salvar dados: ${saveError.message}`);
+        }
+      }
+
       return evolutionResult;
     } catch (error) {
       logger.error('PersonalityOrchestrator', `❌ Erro ao processar interação: ${error.message}`, {

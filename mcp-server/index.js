@@ -54,6 +54,18 @@ class AssistenteMCPServer {
                 content: {
                   type: 'string',
                   description: 'Message content to send to the user'
+                },
+                to: {
+                  type: 'string',
+                  description: 'Recipient ID (chat ID or group ID). If not provided, will use context from current conversation'
+                },
+                from: {
+                  type: 'string',
+                  description: 'Sender context for reply. If not provided, will use context from current conversation'
+                },
+                quotedMsgId: {
+                  type: 'string',
+                  description: 'ID of message to quote/reply to. Used for group replies'
                 }
               },
               required: ['content']
