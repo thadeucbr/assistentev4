@@ -1,0 +1,86 @@
+import { normalizeAiResponse } from '../../utils/aiResponseUtils.js';
+import { sanitizeMessagesForChat } from './messageSanitizer.js';
+import DynamicPromptBuilder from '../prompt/dynamicPromptBuilder.js';
+import MCPToolExecutor from '../tools/MCPToolExecutor.js';
+import chatAi from '../../config/ai/chat.ai.js';
+import logger from '../../utils/logger.js';
+
+/**
+ * Processador dedicado à geração de respostas da IA
+ */
+class AIResponseProcessor {
+  
+  /**
+   * Prepara as mensagens para envio à IA
+   */
+  static prepareChatMessages(dynamicPrompt, messages, userContent) {
+    logger.step('AIResponseProcessor', '💬 Preparando mensagens para chat');
+    const chatMessages = [dynamicPrompt, ...messages, { role: 'user', content: userContent }];
+    return sanitizeMessagesForChat(chatMessages);
+  }
+
+  /**
+   * Obtém ferramentas disponíveis do MCP
+   */
+  static async getAvailableTools() {
+    logger.step('AIResponseProcessor', '🔧 Obtendo ferramentas do MCP dinamicamente');
+    const mcpExecutor = new MCPToolExecutor();
+    const dynamicTools = await mcpExecutor.getToolsForOpenAI();
+    logger.milestone('AIResponseProcessor', `${dynamicTools.length} ferramentas obtidas do MCP dinamicamente`);
+    return { mcpExecutor, dynamicTools };
+  }
+
+  /**
+   * Gera resposta principal da IA
+   */
+  static async generateAIResponse(sanitizedChatMessages, dynamicTools) {
+    logger.step('AIResponseProcessor', '🎯 Gerando resposta principal da IA com ferramentas dinâmicas');
+    
+    try {
+      const aiStartTime = Date.now();
+      let response = await chatAi(sanitizedChatMessages, dynamicTools);
+      const aiEndTime = Date.now();
+      
+      response = normalizeAiResponse(response);
+      
+      // Log detalhado da resposta da IA
+      logger.aiResponse('AIResponseProcessor', 'OpenAI', response, {
+        requestTime: aiEndTime - aiStartTime,
+        messageLength: sanitizedChatMessages.length,
+        toolsAvailable: dynamicTools.length
+      });
+      
+      logger.timing('AIResponseProcessor', '🎯 Resposta principal gerada', {
+        aiTime: `${aiEndTime - aiStartTime}ms`,
+        hasContent: !!response.message?.content,
+        toolCallsCount: response.message?.tool_calls?.length || 0
+      });
+
+      return response;
+    } catch (error) {
+      logger.critical('AIResponseProcessor', `Erro ao gerar resposta principal: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Cria prompt de fallback básico quando o sistema de personalidade falha
+   */
+  static createFallbackPrompt(userProfile, ltmContext, imageAnalysisResult) {
+    logger.debug('AIResponseProcessor', 'Criando prompt de fallback básico');
+    return DynamicPromptBuilder.buildDynamicPrompt(userProfile, ltmContext, imageAnalysisResult);
+  }
+
+  /**
+   * Cria metadados de personalidade padrão para fallback
+   */
+  static createFallbackPersonalityMetadata() {
+    return { 
+      mood: 'neutral', 
+      formation_level: 0, 
+      familiarity_level: 0 
+    };
+  }
+}
+
+export default AIResponseProcessor;
