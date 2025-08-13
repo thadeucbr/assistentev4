@@ -1,24 +1,11 @@
 import * as fs from 'fs/promises';
 import { embeddingModel } from './langchain.js';
 import { logError } from '../utils/logger.js';
+import { cosineSimilarity } from '../utils/cosineSimilarity.js';
 
 const VECTOR_STORE_DIR = './vector_store';
 
-// Helper function to calculate cosine similarity
-function cosineSimilarity(vecA, vecB) {
-  let dotProduct = 0;
-  let magnitudeA = 0;
-  let magnitudeB = 0;
-  for (let i = 0; i < vecA.length; i++) {
-    dotProduct += vecA[i] * vecB[i];
-    magnitudeA += vecA[i] * vecA[i];
-    magnitudeB += vecB[i] * vecB[i];
-  }
-  magnitudeA = Math.sqrt(magnitudeA);
-  magnitudeB = Math.sqrt(magnitudeB);
-  if (magnitudeA === 0 || magnitudeB === 0) return 0; // Avoid division by zero
-  return dotProduct / (magnitudeA * magnitudeB);
-}
+// cosineSimilarity imported from central util
 
 async function loadVectorStore(userId) {
   const userStorePath = `${VECTOR_STORE_DIR}/${userId}.json`;

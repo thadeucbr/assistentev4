@@ -23,10 +23,10 @@ Branch: `chore/cleanup-unused-modules`
 
 ## Próximos passos sugeridos
 
-1. Unificar `cosineSimilarity` em util único.
-2. Consolidar skills duplicadas com wrappers MCP.
-3. Adicionar script de CI (`scripts/check-unused.js`) para detectar módulos sem import.
-4. Revisar antes do merge se não surgiram novos usos em PRs paralelas.
+1. Unificar `cosineSimilarity` em util único. (CONCLUÍDO: util criado em `src/utils/cosineSimilarity.js` e antigo marcado como deprecated)
+2. Consolidar skills duplicadas com wrappers MCP. (PENDENTE)
+3. Adicionar script de CI (`scripts/check-unused.js`) para detectar módulos sem import. (CONCLUÍDO - script adicionado)
+4. Revisar antes do merge se não surgiram novos usos em PRs paralelas. (EM ABERTO)
 
 ## Reversão
 
