@@ -43,10 +43,90 @@ export default class ImageProcessor {
     } else {
       userContent = data.body || '';
     }
+
+    // Incluir informação do usuário em grupos
+    userContent = this.addUserInfo(data, userContent);
+
+    // Processar mensagem quotada se existir
+    userContent = this.processQuotedMessage(data, userContent);
     
     // Limpar o número do WhatsApp da mensagem
     userContent = userContent.replace(process.env.WHATSAPP_NUMBER, '').trim();
 
     return { userContent, imageAnalysisResult };
+  }
+
+  /**
+   * Processa mensagem quotada e inclui no contexto
+   * @param {Object} data - Dados da mensagem
+   * @param {string} userContent - Conteúdo atual da mensagem
+   * @returns {string} - Conteúdo com contexto da quote incluído
+   */
+  static processQuotedMessage(data, userContent) {
+    // Verificar se existe uma mensagem quotada
+    const quotedMsg = data.quotedMsg || data.quotedMsgObj;
+    
+    if (quotedMsg && quotedMsg.body) {
+      logger.debug('ImageProcessor', 'Mensagem quotada detectada - incluindo contexto');
+      
+      // Determinar quem enviou a mensagem quotada
+      let quotedAuthor = 'Alguém';
+      
+      // Se a mensagem quotada foi enviada pelo bot
+      if (quotedMsg.author === process.env.WHATSAPP_NUMBER || 
+          quotedMsg.from === process.env.WHATSAPP_NUMBER ||
+          quotedMsg.fromMe) {
+        quotedAuthor = 'Assistente';
+      } else {
+        // Tentar identificar o autor da mensagem quotada
+        if (quotedMsg.sender?.name) {
+          quotedAuthor = quotedMsg.sender.name;
+        } else if (quotedMsg.author) {
+          // Extrair nome do ID se possível
+          quotedAuthor = quotedMsg.author.replace('@c.us', '');
+        }
+      }
+      
+      // Construir o contexto da quote
+      const quotedContext = `[Respondendo a ${quotedAuthor}: "${quotedMsg.body}"]`;
+      
+      // Incluir o contexto no início da mensagem
+      userContent = `${quotedContext}\n\n${userContent}`;
+      
+      logger.timing('ImageProcessor', 'Contexto da quote incluído', {
+        quotedAuthor,
+        quotedLength: quotedMsg.body.length,
+        hasUserContent: !!userContent.replace(quotedContext, '').trim()
+      });
+    }
+    
+    return userContent;
+  }
+
+  /**
+   * Adiciona informações do usuário para contextualizar mensagens de grupo
+   * @param {Object} data - Dados da mensagem
+   * @param {string} userContent - Conteúdo atual da mensagem
+   * @returns {string} - Conteúdo com informação do usuário incluída
+   */
+  static addUserInfo(data, userContent) {
+    // Verificar se é mensagem de grupo (from termina com @g.us)
+    const isGroup = data.from && data.from.includes('@g.us');
+    
+    if (!isGroup) {
+      return userContent; // Em conversas privadas não precisa identificar
+    }
+    
+    // Extrair nome do usuário
+    let userName = 'Alguém';
+    
+    if (data.notifyName) {
+      userName = data.notifyName;
+    } else if (data.author) {
+      // Fallback: usar o número limpo se não tiver notifyName
+      userName = data.author.replace('@c.us', '');
+    }
+    
+    return `[${userName}]: ${userContent}`;
   }
 }
