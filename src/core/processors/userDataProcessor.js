@@ -79,6 +79,15 @@ class UserDataProcessor {
    */
   static async processImageData(data) {
     logger.step('UserDataProcessor', 'Processando imagens detectadas');
+    // If both image and text are present, return a structured object
+    if (data.type === 'image' && (data.body || data.caption)) {
+      // Prefer caption, fallback to body
+      const text = data.caption || data.body;
+      const image = data.image || data.url || data.mediaUrl || data.media_url;
+      if (image && text) {
+        return { userContent: { text, image }, imageAnalysisResult: null };
+      }
+    }
     const { userContent, imageAnalysisResult } = await ImageProcessor.processImage(data);
     return { userContent, imageAnalysisResult };
   }

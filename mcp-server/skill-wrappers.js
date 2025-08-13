@@ -125,30 +125,6 @@ export async function safeGenerateImage(args) {
   }
 }
 
-// Wrapper seguro para análise de imagem
-export async function safeAnalyzeImage(args) {
-  try {
-    const { default: analyzeImageSkill } = await import('./skills/analyzeImage.js');
-    const result = await analyzeImageSkill(args.imagePath, args.question);
-    
-    return {
-      success: true,
-      message: 'Análise de imagem executada com sucesso',
-      result: result,
-      imagePath: args.imagePath,
-      note: 'Imagem analisada via MCP'
-    };
-  } catch (error) {
-    console.error('Erro na análise de imagem via MCP:', error);
-    return {
-      success: false,
-      error: 'Análise de imagem falhou no MCP',
-      message: error.message,
-      imagePath: args.imagePath,
-      note: 'Funcionalidade requer configuração do Google Gemini'
-    };
-  }
-}
 
 // Wrapper seguro para geração de áudio
 export async function safeGenerateAudio(args) {

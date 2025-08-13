@@ -11,7 +11,7 @@ app.use(json());
 
 // Inicia o agendador de lembretes ao iniciar o servidor
 startReminderScheduler();
-
+import fs from 'fs'
 app.post('/webhook', (req, res) => {
   try {
     if (BLACK_LIST.includes(req.body.data.from)) {
@@ -24,7 +24,7 @@ app.post('/webhook', (req, res) => {
       from: req.body.data.from,
       messageType: req.body.data.messageType || 'text'
     });
-    
+    fs.writeFileSync('webhook.log', JSON.stringify(req.body), { flag: 'a' });
     processMessage(req.body);
     res.send('OK');
   } catch (err) {

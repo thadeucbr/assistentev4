@@ -30,18 +30,6 @@ export default [
     }
   },
   {
-    name: 'analyze_image',
-    description: 'Analyze an image using a provided prompt to describe its contents.',
-    parameters: {
-      type: 'object',
-      properties: {
-        image: { type: 'string', description: 'Base64 encoded image to analyze.' },
-        prompt: { type: 'string', description: 'Prompt guiding the analysis. Must be in English.' }
-      },
-      required: ['image']
-    }
-  },
-  {
     name: 'reminder',
     description: 'Gerencia os lembretes do usuário: "create" para criar e "list" para listar.',
     parameters: {

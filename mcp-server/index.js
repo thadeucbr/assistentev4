@@ -14,7 +14,6 @@ import 'dotenv/config';
 // Importar wrappers seguros para as skills
 import {
   safeGenerateImage,
-  safeAnalyzeImage,
   safeGenerateAudio,
   safeCalendar,
   safeLotteryCheck,
@@ -83,24 +82,6 @@ class AssistenteMCPServer {
                 }
               },
               required: ['prompt']
-            }
-          },
-          {
-            name: 'image_analysis',
-            description: 'Analyze images and extract information from them',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                id: {
-                  type: 'string',
-                  description: 'Image ID or base64 encoded image data'
-                },
-                prompt: {
-                  type: 'string',
-                  description: 'Analysis prompt to guide the image analysis'
-                }
-              },
-              required: ['id']
             }
           },
           {
@@ -199,8 +180,7 @@ class AssistenteMCPServer {
           case 'image_generation':
             return await this.handleImageGeneration(args);
             
-          case 'image_analysis':
-            return await this.handleImageAnalysis(args);
+
             
           case 'audio_generation':
             return await this.handleAudioGeneration(args);
@@ -255,18 +235,6 @@ class AssistenteMCPServer {
     };
   }
 
-  async handleImageAnalysis(args) {
-    const result = await safeAnalyzeImage(args);
-    
-    return {
-      content: [
-        {
-          type: 'text',
-          text: typeof result === 'string' ? result : JSON.stringify(result, null, 2)
-        }
-      ]
-    };
-  }
 
   async handleAudioGeneration(args) {
     const result = await safeGenerateAudio(args);

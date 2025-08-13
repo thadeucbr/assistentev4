@@ -15,7 +15,22 @@ class AIResponseProcessor {
    */
   static prepareChatMessages(dynamicPrompt, messages, userContent) {
     logger.step('AIResponseProcessor', '💬 Preparando mensagens para chat');
-    const chatMessages = [dynamicPrompt, ...messages, { role: 'user', content: userContent }];
+    // Detect if userContent is a special object with both text and image
+    let userMessage;
+    if (userContent && typeof userContent === 'object' && (userContent.text || userContent.image)) {
+      // Build content array for OpenAI Vision
+      const contentArr = [];
+      if (userContent.text) {
+        contentArr.push({ type: 'text', text: userContent.text });
+      }
+      if (userContent.image) {
+        contentArr.push({ type: 'image_url', image_url: { url: userContent.image, detail: 'auto' } });
+      }
+      userMessage = { role: 'user', content: contentArr };
+    } else {
+      userMessage = { role: 'user', content: userContent };
+    }
+    const chatMessages = [dynamicPrompt, ...messages, userMessage];
     return sanitizeMessagesForChat(chatMessages);
   }
 

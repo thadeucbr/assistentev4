@@ -16,9 +16,25 @@ const OPENAI_KEY = process.env.OPENAI_API_KEY;
  * @param {Array<Object>} messages The raw array of chat messages.
  * @returns {Array<Object>} A new array of sanitized and filtered messages ready for the API.
  */
+
+// Detecta se o texto é uma URL de imagem ou base64 de imagem
+function isImageContent(content) {
+  if (!content || typeof content !== 'string') return false;
+  // Base64 JPEG/PNG
+  if (content.startsWith('data:image/')) return true;
+  // URL simples
+  if (/^https?:\/\/[^\s]+\.(jpg|jpeg|png|webp|gif|bmp)(\?.*)?$/i.test(content)) return true;
+  // WhatsApp CDN
+  if (/^https?:\/\/mmg\.whatsapp\.net\//.test(content)) return true;
+  return false;
+}
+
+/**
+ * Sanitiza e adapta mensagens para o formato da OpenAI, incluindo suporte a imagens.
+ */
 function sanitizeMessages(messages) {
   const cleanMessages = [];
-  
+
   for (let i = 0; i < messages.length; i++) {
     let message = { ...messages[i] };
 
@@ -30,6 +46,56 @@ function sanitizeMessages(messages) {
     // Remove deprecated 'name' from user/assistant roles
     if (message.role === 'user' || message.role === 'assistant') {
       delete message.name;
+    }
+
+    // Suporte a imagem para mensagens do usuário
+    if (message.role === 'user' && isImageContent(message.content)) {
+      // Se vier só a imagem, transforma em array content
+      message.content = [
+        {
+          type: 'image_url',
+          image_url: {
+            url: message.content,
+            detail: 'auto'
+          }
+        }
+      ];
+    } else if (
+      message.role === 'user' &&
+      Array.isArray(message.content) &&
+      message.content.some(
+        c => c.type === 'image_url' || isImageContent(c.text || c.url || c)
+      )
+    ) {
+      // Já está no formato vision ou misto texto+imagem
+      message.content = message.content.map(c => {
+        if (typeof c === 'string' && isImageContent(c)) {
+          return {
+            type: 'image_url',
+            image_url: { url: c, detail: 'auto' }
+          };
+        }
+        if (c.type === 'image_url') return c;
+        if (c.text && isImageContent(c.text)) {
+          return {
+            type: 'image_url',
+            image_url: { url: c.text, detail: 'auto' }
+          };
+        }
+        if (c.url && isImageContent(c.url)) {
+          return {
+            type: 'image_url',
+            image_url: { url: c.url, detail: 'auto' }
+          };
+        }
+        if (c.text) {
+          return { type: 'text', text: c.text };
+        }
+        return c;
+      });
+    } else if (message.role === 'user' && typeof message.content === 'string' && message.content !== null) {
+      // Mensagem normal de texto
+      message.content = message.content;
     }
 
     // Ensure content is not null (unless tool_calls are present)
@@ -61,14 +127,14 @@ function sanitizeMessages(messages) {
           break;
         }
       }
-      
+
       // A 'tool' message must follow an 'assistant' message with 'tool_calls'.
       if (!assistantMessage) {
         // This is an orphaned tool message, so we discard it.
         continue;
       }
 
-      // The 'tool' message needs a 'tool_call_id'. 
+      // The 'tool' message needs a 'tool_call_id'.
       // First check if it already has a valid tool_call_id
       if (message.tool_call_id) {
         // Verify this tool_call_id exists in the assistant message
@@ -96,7 +162,7 @@ function sanitizeMessages(messages) {
         }
       }
     }
-    
+
     cleanMessages.push(message);
   }
 
@@ -112,10 +178,20 @@ export default async function openAiChat(chatMessages, toolsParam) {
     throw new Error('Missing OPENAI_API_KEY environment variable');
   }
 
+
+  // Log detalhado do payload enviado ao OpenAI
   logger.debug('OpenAI', 'Iniciando chamada para OpenAI', {
     model: OPENAI_MODEL,
     messagesCount: chatMessages.length,
-    toolsCount: toolsParam?.length || 0
+    toolsCount: toolsParam?.length || 0,
+    userMessages: chatMessages
+      .filter(m => m.role === 'user')
+      .map(m => ({
+        content: m.content,
+        contentType: Array.isArray(m.content)
+          ? m.content.map(c => c.type || typeof c)
+          : typeof m.content
+      }))
   });
 
   const body = {

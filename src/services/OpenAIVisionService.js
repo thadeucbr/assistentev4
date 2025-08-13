@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { logError } from '../utils/logger.js';
+import logger, { logError } from '../utils/logger.js';
 
 /**
  * Analisa imagens usando a API OpenAI Vision (GPT-4 Vision)
@@ -10,8 +10,8 @@ import { logError } from '../utils/logger.js';
  */
 export async function analyzeImageWithOpenAIVision(base64Image, prompt, options = {}) {
   try {
-    console.log('Iniciando análise de imagem com OpenAI Vision...');
-    console.log('Prompt:', prompt);
+  logger.info('OpenAIVision', 'Iniciando análise de imagem com OpenAI Vision...');
+  logger.debug('OpenAIVision', `Prompt: ${prompt}`);
 
     const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
     const OPENAI_VISION_MODEL = process.env.OPENAI_VISION_MODEL || 'gpt-4o-mini';
@@ -52,7 +52,7 @@ export async function analyzeImageWithOpenAIVision(base64Image, prompt, options 
       temperature: options.temperature || 0.3
     };
 
-    console.log('Fazendo requisição para OpenAI Vision API...');
+  logger.info('OpenAIVision', 'Fazendo requisição para OpenAI Vision API...');
     
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -65,12 +65,12 @@ export async function analyzeImageWithOpenAIVision(base64Image, prompt, options 
 
     if (!response.ok) {
       const errorData = await response.text();
-      console.error('Erro na API OpenAI Vision:', response.status, errorData);
+      logger.error('OpenAIVision', `Erro na API OpenAI Vision: ${response.status}`, { errorData });
       throw new Error(`OpenAI Vision API error: ${response.status} - ${errorData}`);
     }
 
     const data = await response.json();
-    console.log('Resposta recebida da OpenAI Vision API');
+  logger.info('OpenAIVision', 'Resposta recebida da OpenAI Vision API');
 
     if (!data.choices || !data.choices[0] || !data.choices[0].message) {
       throw new Error('Resposta inválida da OpenAI Vision API - estrutura esperada não encontrada');
@@ -89,7 +89,7 @@ export async function analyzeImageWithOpenAIVision(base64Image, prompt, options 
     return result;
 
   } catch (error) {
-    console.error('Erro na análise de imagem com OpenAI Vision:', error);
+  logger.error('OpenAIVision', 'Erro na análise de imagem com OpenAI Vision', { error });
     logError(error, `analyzeImageWithOpenAIVision - Falha na análise com prompt: "${prompt}"`);
     
     return {
