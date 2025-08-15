@@ -17,7 +17,8 @@ import {
   safeGenerateAudio,
   safeLotteryCheck,
   safeReminderManagement,
-  safeSendMessage
+  safeSendMessage,
+  safeCalendarManagement
 } from './skill-wrappers.js';
 
 class AssistenteMCPServer {
@@ -191,8 +192,44 @@ class AssistenteMCPServer {
   }
 
   async handleSendMessage(args) {
-  const result = await safeSendMessage(args);
-  return result;
+    const result = await safeSendMessage(args);
+    return result;
+  }
+
+  async handleImageGeneration(args) {
+    const result = await safeGenerateImage(args);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(result, null, 2)
+        }
+      ]
+    };
+  }
+
+  async handleAudioGeneration(args) {
+    const result = await safeGenerateAudio(args);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(result, null, 2)
+        }
+      ]
+    };
+  }
+
+  async handleCalendarManagement(args) {
+    const result = await safeCalendarManagement(args);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+        }
+      ]
+    };
   }
 
   async handleLotteryCheck(args) {
