@@ -1,9 +1,26 @@
 import ollamaChat from './ollama/ollamaChat.js';
 import openAiChat from './openai/openAiChat.js';
 import logger from '../../utils/logger.js';
+import { checkTokenLimit } from '../../utils/tokenEstimator.js';
 
 export default async function chatAi(chatMessages, tools) {
-  const provider = process.env.AI_PROVIDER;
+  const provider = process.env.AI_PROVIDER || 'openai'; // Default to openai
+  const openAiModel = process.env.OPENAI_MODEL_NAME || 'gpt-4-turbo';
+  const ollamaModel = process.env.OLLAMA_MODEL_NAME || 'llama3';
+
+  // --- Circuit Breaker ---
+  // Before any API call, check if the payload is within safe limits.
+  try {
+    const modelToCheck = provider === 'openai' ? openAiModel : ollamaModel;
+    logger.debug('ChatAI', `Performing pre-flight token check for model: ${modelToCheck}`);
+    checkTokenLimit(chatMessages, modelToCheck);
+  } catch (err) {
+    // If the circuit breaker trips, log the error and re-throw it to stop execution.
+    logger.critical('ChatAI', `Circuit breaker tripped: ${err.message}`);
+    // We throw the original error which is already detailed.
+    throw err;
+  }
+  // --- End of Circuit Breaker ---
 
   if (provider === 'ollama') {
     // If Ollama is the provider, try it and fallback to OpenAI on error.
@@ -18,6 +35,8 @@ export default async function chatAi(chatMessages, tools) {
       
       try {
         logger.systemStatus('OpenAI', 'connecting');
+        // Check token limit for the fallback provider
+        checkTokenLimit(chatMessages, openAiModel);
         const result = await openAiChat(chatMessages, tools);
         logger.systemStatus('OpenAI', 'online');
         return result;
@@ -30,7 +49,7 @@ export default async function chatAi(chatMessages, tools) {
         throw new Error(`AI chat failed: Primary (Ollama): ${err.message}, Fallback (OpenAI): ${fallbackErr.message}`);
       }
     }
-  } else if (provider === 'openai') {
+  } else { // This block now handles 'openai' and the default case
     // If OpenAI is the provider, handle rate limits gracefully
     try {
       logger.systemStatus('OpenAI', 'connecting');
@@ -44,6 +63,8 @@ export default async function chatAi(chatMessages, tools) {
         
         try {
           logger.systemStatus('Ollama', 'connecting');
+          // Check token limit for the fallback provider
+          checkTokenLimit(chatMessages, ollamaModel);
           const result = await ollamaChat(chatMessages, tools);
           logger.systemStatus('Ollama', 'online');
           return result;
@@ -60,31 +81,6 @@ export default async function chatAi(chatMessages, tools) {
         logger.systemStatus('OpenAI', 'error', { error: err.message });
         logger.error('ChatAI', `Erro no OpenAI: ${err.message}`);
         throw err;
-      }
-    }
-  } else {
-    // Default behavior if no provider is specified: try OpenAI first, then Ollama.
-    try {
-      logger.systemStatus('OpenAI', 'connecting');
-      const result = await openAiChat(chatMessages, tools);
-      logger.systemStatus('OpenAI', 'online');
-      return result;
-    } catch (err) {
-      logger.systemStatus('OpenAI', 'error', { error: err.message });
-      logger.warn('ChatAI', `OpenAI falhou, usando Ollama como fallback: ${err.message}`);
-      
-      try {
-        logger.systemStatus('Ollama', 'connecting');
-        const result = await ollamaChat(chatMessages, tools);
-        logger.systemStatus('Ollama', 'online');
-        return result;
-      } catch (fallbackErr) {
-        logger.systemStatus('Ollama', 'error', { error: fallbackErr.message });
-        logger.critical('ChatAI', 'Tanto OpenAI quanto Ollama falharam', { 
-          openai: err.message, 
-          ollama: fallbackErr.message 
-        });
-        throw new Error(`AI chat failed: Primary (OpenAI): ${err.message}, Fallback (Ollama): ${fallbackErr.message}`);
       }
     }
   }
