@@ -12,7 +12,7 @@ const mockWhatsAppFunction = () => Promise.resolve({ success: true, message: 'Fu
 export async function safeSendMessage(args) {
   try {
     // Importar a função real de envio de mensagem do WhatsApp
-    const { default: sendMessage } = await import('./whatsapp/sendMessage.js');
+    const { default: sendMessage } = await import('../src/whatsapp/sendMessage.js');
     
     // Garantir que temos um destinatário válido
     const recipient = args.to || args.from || process.env.DEFAULT_WHATSAPP_RECIPIENT || '5511971704940@c.us';
@@ -43,7 +43,7 @@ export async function safeSendMessage(args) {
 export async function safeSendPtt(args) {
   try {
     // Importar a função real de envio de áudio do WhatsApp
-    const { default: sendPtt } = await import('./whatsapp/sendPtt.js');
+    const { default: sendPtt } = await import('../src/whatsapp/sendPtt.js');
     
     // Executar a função real com os parâmetros corretos
     const result = await sendPtt(args.to || args.from, args.audioBuffer, args.quotedMsgId);
@@ -68,7 +68,7 @@ export async function safeSendPtt(args) {
 // Wrapper seguro para geração de imagem
 export async function safeGenerateImage(args) {
   try {
-    const { default: generateImage } = await import('./skills/generateImage.js');
+    const { default: generateImage } = await import('../src/skills/generateImage.js');
     
     // IMPORTANTE: Remover o argumento 'model' se vier do MCP para garantir
     // que o IMAGE_PROVIDER do .env sempre tenha prioridade
@@ -129,13 +129,13 @@ export async function safeGenerateImage(args) {
 // Wrapper seguro para geração de áudio
 export async function safeGenerateAudio(args) {
   try {
-    const { default: generateAudio } = await import('./skills/generateAudio.js');
+    const { default: generateAudio } = await import('../src/skills/generateAudio.js');
     const result = await generateAudio(args.text, args.voice);
     
     // Se especificado, enviar o áudio automaticamente
     if (args.sendAudio && args.to && result && result.audioBuffer) {
       try {
-        const { default: sendPtt } = await import('./whatsapp/sendPtt.js');
+        const { default: sendPtt } = await import('../src/whatsapp/sendPtt.js');
         const sendResult = await sendPtt(args.to, result.audioBuffer, args.quotedMsgId);
         
         return {
@@ -183,7 +183,7 @@ export async function safeGenerateAudio(args) {
 // Wrapper seguro para verificação de loteria
 export async function safeLotteryCheck(args) {
   try {
-    const { default: lotteryCheck } = await import('./skills/lotteryCheck.js');
+    const { default: lotteryCheck } = await import('../src/skills/lotteryCheck.js');
     const result = await lotteryCheck(args.query);
     
     return {
@@ -208,7 +208,7 @@ export async function safeLotteryCheck(args) {
 // Wrapper seguro para lembretes
 export async function safeReminderManagement(args) {
   try {
-    const { default: reminderSkill } = await import('./skills/reminder.js');
+    const { reminderSkill } = await import('../src/skills/reminder.js');
     const result = await reminderSkill(args.userId, args.query);
     
     return {

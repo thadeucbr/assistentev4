@@ -77,26 +77,22 @@ Este é o servidor MCP (Model Context Protocol) para o Assistente WhatsApp. Ele 
 ## Instalação e Configuração
 
 ### 1. Instalar Dependências
+Todas as dependências são gerenciadas no arquivo `package.json` da raiz do projeto. Para instalar, execute na raiz do projeto:
 ```bash
-cd mcp-server
 npm install
 ```
 
 ### 2. Configurar Variáveis de Ambiente
-Copie as variáveis de ambiente do projeto principal ou configure o arquivo `.env` local.
+O servidor MCP utiliza as mesmas variáveis de ambiente do projeto principal. Certifique-se de que seu arquivo `.env` na raiz do projeto está configurado corretamente.
 
 ### 3. Executar o Servidor
+Os comandos para executar o servidor MCP devem ser executados a partir da raiz do projeto:
 ```bash
 # Modo produção
-npm start
+npm run mcp:start
 
 # Modo desenvolvimento
-npm run dev
-```
-
-### 4. Testar o Servidor
-```bash
-node test-server.js
+npm run mcp:dev
 ```
 
 ## Integração com OpenAI
@@ -125,23 +121,23 @@ Para usar este servidor MCP com a OpenAI, você precisará:
 
 ## Arquitetura
 
-O servidor MCP atua como uma ponte entre as tools existentes do projeto e o protocolo MCP, permitindo que:
+O servidor MCP atua como uma fina camada de adaptação (adapter layer) que expõe a lógica de negócio do assistente, localizada no diretório `src`, através do Model Context Protocol (MCP).
 
-1. **Reutilização**: As mesmas tools podem ser usadas tanto no WhatsApp quanto via MCP
-2. **Padronização**: Interface consistente para diferentes clientes AI
-3. **Escalabilidade**: Fácil adição de novas tools
-4. **Manutenabilidade**: Separação clara entre lógica de negócio e protocolo
+Esta arquitetura garante:
+
+1. **Fonte Única da Verdade**: Toda a lógica de skills, serviços e utilitários reside no diretório `src`. O MCP server apenas importa e expõe essa lógica.
+2. **Reutilização**: As mesmas funcionalidades são utilizadas pelo webhook principal do WhatsApp e pelo MCP server, sem duplicação de código.
+3. **Manutenabilidade**: A lógica de negócio e o protocolo de exposição estão desacoplados, facilitando a manutenção e a evolução de ambos.
 
 ## Estrutura de Pastas
 
+A estrutura do `mcp-server` foi simplificada para conter apenas os arquivos essenciais para o funcionamento do servidor de protocolo:
 ```
 mcp-server/
-├── index.js          # Servidor principal MCP
-├── config.js         # Configurações
-├── test-server.js    # Script de teste
-├── package.json      # Dependências npm
-├── .env              # Variáveis de ambiente
-└── README.md         # Esta documentação
+├── index.js              # Lógica do servidor principal MCP
+├── skill-wrappers.js     # Wrappers que importam e adaptam as skills do `src`
+├── .env.example          # Exemplo de variáveis de ambiente (se houver específicas)
+└── README.md             # Esta documentação
 ```
 
 ## Logs e Debugging
