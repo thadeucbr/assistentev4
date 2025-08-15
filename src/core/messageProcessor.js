@@ -58,8 +58,8 @@ class MessageProcessor {
       // Feedback imediato: simular digitação
       simulateTyping(data.from, true);
 
-      // === FASE 3: PROCESSAMENTO DE DADOS ===
-      const { userContent, imageAnalysisResult } = await UserDataProcessor.processImageData(data);
+  // === FASE 3: PROCESSAMENTO DE DADOS ===
+  const { userContent, imageAnalysisResult } = await UserDataProcessor.processMediaData(data);
       const { userId, rawMessages, userProfile, ltmContext } = await UserDataProcessor.loadUserData(data, userContent);
       let messages = await UserDataProcessor.processMessageContext(rawMessages, userContent, userId, data.from);
 

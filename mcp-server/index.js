@@ -15,7 +15,6 @@ import 'dotenv/config';
 import {
   safeGenerateImage,
   safeGenerateAudio,
-  safeCalendar,
   safeLotteryCheck,
   safeReminderManagement,
   safeSendMessage
@@ -115,24 +114,6 @@ class AssistenteMCPServer {
             }
           },
           {
-            name: 'calendar_management',
-            description: 'Manage Google Calendar events - create, list, and modify calendar entries',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                userId: {
-                  type: 'string',
-                  description: 'User ID for calendar operations'
-                },
-                query: {
-                  type: 'string',
-                  description: 'Calendar operation query (e.g., "create event tomorrow at 2pm", "list upcoming events")'
-                }
-              },
-              required: ['userId', 'query']
-            }
-          },
-          {
             name: 'lottery_check',
             description: 'Check lottery results for Brazilian lotteries (Mega-Sena, Quina, Lotofácil)',
             inputSchema: {
@@ -210,56 +191,8 @@ class AssistenteMCPServer {
   }
 
   async handleSendMessage(args) {
-    const result = await safeSendMessage(args);
-    
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(result, null, 2)
-        }
-      ]
-    };
-  }
-
-  async handleImageGeneration(args) {
-    const result = await safeGenerateImage(args);
-    
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(result, null, 2)
-        }
-      ]
-    };
-  }
-
-
-  async handleAudioGeneration(args) {
-    const result = await safeGenerateAudio(args);
-    
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(result, null, 2)
-        }
-      ]
-    };
-  }
-
-  async handleCalendarManagement(args) {
-    const result = await safeCalendar(args);
-    
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(result, null, 2)
-        }
-      ]
-    };
+  const result = await safeSendMessage(args);
+  return result;
   }
 
   async handleLotteryCheck(args) {

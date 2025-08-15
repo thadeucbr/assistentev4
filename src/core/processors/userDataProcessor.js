@@ -2,6 +2,7 @@ import LtmService from '../../services/LtmService.js';
 import { sanitizeMessagesForChat } from './messageSanitizer.js';
 import STMManager from '../memory/stmManager.js';
 import ImageProcessor from './imageProcessor.js';
+import { transcribeAudio } from '../../services/audioTranscriber.js';
 import MessageAuthHandler from './messageAuthHandler.js';
 import AIAnalysisHandler from './aiAnalysisHandler.js';
 import { getUserContext, updateUserContext } from '../../repository/contextRepository.js';
@@ -75,11 +76,23 @@ class UserDataProcessor {
   }
 
   /**
-   * Processa imagens e extrai conteúdo do usuário
+   * Processa mídias (imagem, áudio) e extrai conteúdo do usuário
    */
-  static async processImageData(data) {
-    logger.step('UserDataProcessor', 'Processando imagens detectadas');
-    // If both image and text are present, return a structured object
+  static async processMediaData(data) {
+    logger.step('UserDataProcessor', 'Processando mídias detectadas');
+    // Áudio
+    if (data.type === 'audio' && data.mediaPath) {
+      try {
+        logger.info('UserDataProcessor', 'Áudio detectado - iniciando transcrição', { mediaPath: data.mediaPath });
+        const transcript = await transcribeAudio(data.mediaPath);
+        logger.info('UserDataProcessor', 'Transcrição de áudio concluída', { transcript });
+        return { userContent: transcript, imageAnalysisResult: null };
+      } catch (err) {
+        logger.error('UserDataProcessor', 'Erro ao transcrever áudio', { error: err.message, mediaPath: data.mediaPath });
+        return { userContent: '[Falha ao transcrever áudio]', imageAnalysisResult: null };
+      }
+    }
+    // Imagem
     if (data.type === 'image' && (data.body || data.caption)) {
       // Prefer caption, fallback to body
       const text = data.caption || data.body;

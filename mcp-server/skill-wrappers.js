@@ -179,31 +179,6 @@ export async function safeGenerateAudio(args) {
 }
 
 // Wrapper seguro para calendário
-export async function safeCalendar(args) {
-  try {
-    const { default: calendarSkill } = await import('./skills/calendar.js');
-    const result = await calendarSkill(args.userId, args.query);
-    
-    return {
-      success: true,
-      message: 'Operação de calendário executada com sucesso',
-      result: result,
-      userId: args.userId,
-      query: args.query,
-      note: 'Operação executada via MCP'
-    };
-  } catch (error) {
-    console.error('Erro na operação de calendário via MCP:', error);
-    return {
-      success: false,
-      error: 'Operação de calendário falhou no MCP',
-      message: error.message,
-      userId: args.userId,
-      query: args.query,
-      note: 'Funcionalidade requer configuração completa do Google Calendar'
-    };
-  }
-}
 
 // Wrapper seguro para verificação de loteria
 export async function safeLotteryCheck(args) {

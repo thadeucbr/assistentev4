@@ -22,13 +22,14 @@ class ToolExecutionOrchestrator {
     
     logger.debug('ToolExecutionOrchestrator', `🔧 Iniciando ciclo de ferramentas - Response: ${lastResponse.content ? 'com conteúdo' : 'sem conteúdo'}, Tool calls: ${lastResponse.tool_calls?.length || 0}`);
     
+    let sendMessageFound = false;
     while (toolCycleCount < this.MAX_TOOL_CYCLES) {
       logger.debug('ToolExecutionOrchestrator', `🔄 Ciclo ${toolCycleCount + 1}/${this.MAX_TOOL_CYCLES}`);
-      
+
       if ((lastResponse.tool_calls && lastResponse.tool_calls.length > 0) || lastResponse.function_call) {
         // Verificar loops de image_generation
         lastResponse = this._handleImageGenerationLoops(messages, lastResponse);
-        
+
         if (lastResponse.tool_calls && lastResponse.tool_calls.length === 0) {
           logger.debug('ToolExecutionOrchestrator', '✅ Loop de image_generation resolvido - finalizando ciclo');
           break;
@@ -38,21 +39,28 @@ class ToolExecutionOrchestrator {
         const updatedMessages = await this._executeTools(
           messages, lastResponse, tools, data, userContent, imageAnalysisResult, mcpExecutor
         );
-        
+
         messages.length = 0;
         messages.push(...updatedMessages);
-        
+
+        // Interceptar erro crítico de tool (ex: Cannot find module)
+        const lastToolMsg = messages.slice().reverse().find(m => m.role === 'tool' && typeof m.content === 'string');
+        if (lastToolMsg && /Cannot find module|ferramenta não encontrada|falhou ao executar/i.test(lastToolMsg.content)) {
+          logger.warn('ToolExecutionOrchestrator', `[ROBUST-TOOL-ERROR] Erro crítico detectado na tool: ${lastToolMsg.content}`);
+          await this._handleFinalFallback(messages, data);
+          break;
+        }
+
         // Verificar se send_message foi executado
-        const hasSendMessage = lastResponse.tool_calls?.some(tc => tc.function.name === 'send_message');
-        
-        if (hasSendMessage) {
+        sendMessageFound = lastResponse.tool_calls?.some(tc => tc.function.name === 'send_message');
+        if (sendMessageFound) {
           logger.debug('ToolExecutionOrchestrator', '✅ Send_message executado - finalizando ciclo');
           break;
         }
 
         // Fazer nova chamada à IA
         lastResponse = await this._makeFollowUpAICall(messages, tools);
-        
+
       } else if (lastResponse.tool_calls && lastResponse.tool_calls.length > 0) {
         logger.debug('ToolExecutionOrchestrator', '⚠️ Fallback: Adicionando respostas para tool_calls órfãs');
         this._addFallbackToolResponses(messages, lastResponse);
@@ -61,12 +69,25 @@ class ToolExecutionOrchestrator {
         logger.debug('ToolExecutionOrchestrator', '✅ Sem tool_calls - encerrando ciclo normalmente');
         break;
       }
-      
+
       toolCycleCount++;
     }
 
-    // Fallback final se necessário
-    await this._handleFinalFallback(messages, data);
+    // Fallback final se necessário (garante resposta ao usuário)
+    const hasValidSendMessage = messages.some(m =>
+      m.role === 'assistant' &&
+      m.tool_calls &&
+      m.tool_calls.some(tc => tc.function.name === 'send_message') &&
+      (
+        // Verifica se há conteúdo não nulo/vazio associado ao send_message
+        (typeof m.content === 'string' && m.content.trim().length > 0) ||
+        (Array.isArray(m.content) && m.content.length > 0)
+      )
+    );
+    if ((!hasValidSendMessage && !sendMessageFound) || messages.filter(m => m.role === 'assistant' && m.tool_calls && m.tool_calls.some(tc => tc.function.name === 'send_message')).every(m => !m.content || (typeof m.content === 'string' && m.content.trim().length === 0))) {
+      logger.warn('ToolExecutionOrchestrator', '[ROBUST-FALLBACK] Nenhum send_message válido (com conteúdo) detectado após ciclo de ferramentas. Forçando fallback para garantir resposta ao usuário.');
+      await this._handleFinalFallback(messages, data);
+    }
   }
 
   /**
@@ -261,7 +282,7 @@ class ToolExecutionOrchestrator {
       
       const fallbackAssistant = {
         role: 'assistant',
-        content: null,
+        content: fallbackContent,
         tool_calls: [
           {
             id: `call_fallback_${Date.now()}`,
