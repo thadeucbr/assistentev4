@@ -78,16 +78,35 @@ export async function safeGenerateImage(args) {
       console.log(`🚫 Argumento 'model: ${model}' ignorado - usando IMAGE_PROVIDER do .env`);
     }
     
-    // Incluir o parâmetro 'from' que pode vir do contexto MCP
+    // Garantir que userId seja passado corretamente para a skill
     const imageArgs = {
       ...cleanArgs,
-      from: cleanArgs.from || cleanArgs.recipient || process.env.DEFAULT_WHATSAPP_RECIPIENT
+      userId: cleanArgs.from || cleanArgs.recipient || process.env.DEFAULT_WHATSAPP_RECIPIENT
     };
     
     console.log(`🎨 Iniciando geração de imagem com IMAGE_PROVIDER: ${process.env.IMAGE_PROVIDER || 'stable-diffusion'}`);
     
     const result = await generateImage(imageArgs);
-    
+
+    // Se a skill retornar uma string simples, adaptar para o formato esperado pelo MCP
+    if (typeof result === 'string') {
+      return {
+        success: true,
+        message: result,
+        result: {
+          sent: true,
+          description: result,
+          prompt: imageArgs.prompt,
+          provider: process.env.IMAGE_PROVIDER || 'stable-diffusion',
+          generationDetails: null,
+          completed: true
+        },
+        sent: true,
+        completed: true,
+        note: '✅ Imagem gerada e enviada via WhatsApp através do MCP - Tarefa completada'
+      };
+    }
+    // Se for objeto, manter compatibilidade antiga
     return {
       success: result.success,
       message: result.sent ? 

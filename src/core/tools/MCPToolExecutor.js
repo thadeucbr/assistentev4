@@ -75,47 +75,49 @@ export default class MCPToolExecutor {
     
     let newMessages = [...messages];
     const toolResponses = [];
+    const respondedToolCallIds = new Set();
 
     for (const toolCall of response.message.tool_calls) {
       const toolName = toolCall.function.name;
       const toolId = toolCall.id;
       let args;
-      
+
       try {
         args = JSON.parse(toolCall.function.arguments);
       } catch (parseError) {
         logger.error('MCPToolExecutor', `Erro ao parsear argumentos para ${toolName}: ${parseError.message}`);
         args = {};
       }
-      
+
       // Iniciar tracking da tool
       logger.toolStart(toolName, toolId, args);
 
       try {
         // Adaptar argumentos para MCP
         const mcpArgs = this.adaptArgsForMCP(toolName, args, from, messageData);
-        
+
         // Executar via MCP com retry
         const mcpResult = await this.executeWithRetry(toolName, mcpArgs);
-        
+
         // Processar resultado do MCP
         const toolResult = this.processMCPResult(toolName, mcpResult, from);
-        
+
         const toolResponse = {
           role: 'tool',
           tool_call_id: toolCall.id,
           content: toolResult,
         };
-        
+
         toolResponses.push(toolResponse);
-        
+        respondedToolCallIds.add(toolCall.id);
+
         // Finalizar tracking da tool com sucesso
         logger.toolEnd(toolName, toolId, toolResult);
-        
+
       } catch (error) {
         // Finalizar tracking da tool com erro
         logger.toolEnd(toolName, toolId, null, error);
-        
+
         // Criar resposta de erro mais informativa
         const errorMessage = this.createErrorMessage(toolName, error);
         const errorResponse = {
@@ -123,14 +125,26 @@ export default class MCPToolExecutor {
           tool_call_id: toolCall.id,
           content: errorMessage,
         };
-        
+
         toolResponses.push(errorResponse);
+        respondedToolCallIds.add(toolCall.id);
+      }
+    }
+
+    // Fallback: garantir que todos os tool_call_ids recebam resposta
+    for (const toolCall of response.message.tool_calls) {
+      if (!respondedToolCallIds.has(toolCall.id)) {
+        toolResponses.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: '❌ Erro desconhecido: tool_call_id não processado. Nenhuma resposta gerada para esta ferramenta.'
+        });
       }
     }
 
     // Adicionar todas as respostas das ferramentas
     newMessages.push(...toolResponses);
-    
+
     logger.timing('MCPToolExecutor', `${toolResponses.length} tools executadas via MCP`);
     return newMessages;
   }

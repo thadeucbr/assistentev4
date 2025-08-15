@@ -13,26 +13,71 @@ class ToolExecutionOrchestrator {
   /**
    * Executa o ciclo completo de ferramentas
    */
+
   static async executeToolCycle(messages, response, tools, data, userContent, imageAnalysisResult, mcpExecutor) {
     logger.debug('ToolExecutionOrchestrator', '🎬 === ENTRANDO EM executeToolCycle ===');
     
     let toolCycleCount = 0;
     let lastResponse = response.message;
     const executedTools = new Set();
-    
     logger.debug('ToolExecutionOrchestrator', `🔧 Iniciando ciclo de ferramentas - Response: ${lastResponse.content ? 'com conteúdo' : 'sem conteúdo'}, Tool calls: ${lastResponse.tool_calls?.length || 0}`);
-    
     let sendMessageFound = false;
+    // Novo: lista para armazenar tool_call_ids removidos por deduplicação
+    let dedupedToolCalls = [];
+
+    // Novo: rastrear prompts de image_generation já executados neste ciclo
+    const executedImagePrompts = new Set();
+
     while (toolCycleCount < this.MAX_TOOL_CYCLES) {
       logger.debug('ToolExecutionOrchestrator', `🔄 Ciclo ${toolCycleCount + 1}/${this.MAX_TOOL_CYCLES}`);
 
       if ((lastResponse.tool_calls && lastResponse.tool_calls.length > 0) || lastResponse.function_call) {
         // Verificar loops de image_generation
-        lastResponse = this._handleImageGenerationLoops(messages, lastResponse);
+        const { lastResponse: dedupedResponse, dedupedToolCalls: removedToolCalls } = this._handleImageGenerationLoopsWithDedup(messages, lastResponse);
+        lastResponse = dedupedResponse;
+        dedupedToolCalls = removedToolCalls;
 
         if (lastResponse.tool_calls && lastResponse.tool_calls.length === 0) {
           logger.debug('ToolExecutionOrchestrator', '✅ Loop de image_generation resolvido - finalizando ciclo');
+          // Adicionar respostas de erro para tool_call_ids deduplicados
+          for (const tc of dedupedToolCalls) {
+            messages.push({
+              role: 'tool',
+              tool_call_id: tc.id,
+              content: `Prompt duplicado detectado: "${tc.prompt?.substring(0, 60) || ''}". Nenhuma ação executada para evitar repetição.`
+            });
+            logger.debug('ToolExecutionOrchestrator', `Resposta de deduplicação adicionada para tool_call_id=${tc.id}`);
+          }
           break;
+        }
+
+        // Bloquear prompts de image_generation já executados neste ciclo
+        if (lastResponse.tool_calls) {
+          // Lista para armazenar tool_calls ignorados por já terem sido executados
+          const skippedToolCalls = [];
+          lastResponse.tool_calls = lastResponse.tool_calls.filter(tc => {
+            if (tc.function?.name === 'image_generation') {
+              try {
+                const prompt = JSON.parse(tc.function.arguments).prompt;
+                if (executedImagePrompts.has(prompt)) {
+                  logger.debug('ToolExecutionOrchestrator', `🛑 Prompt de image_generation já executado neste ciclo: "${prompt?.substring(0, 60) || ''}". Ignorando.`);
+                  skippedToolCalls.push({ id: tc.id, prompt });
+                  return false;
+                }
+                executedImagePrompts.add(prompt);
+              } catch (e) {}
+            }
+            return true;
+          });
+          // Adiciona mensagens de tool para cada tool_call_id ignorado
+          for (const tc of skippedToolCalls) {
+            messages.push({
+              role: 'tool',
+              tool_call_id: tc.id,
+              content: `Prompt já executado neste ciclo: "${tc.prompt?.substring(0, 60) || ''}". Nenhuma ação executada para evitar repetição.`
+            });
+            logger.debug('ToolExecutionOrchestrator', `Resposta de ciclo já executado adicionada para tool_call_id=${tc.id}`);
+          }
         }
 
         // Executar ferramentas
@@ -42,6 +87,16 @@ class ToolExecutionOrchestrator {
 
         messages.length = 0;
         messages.push(...updatedMessages);
+
+        // Adicionar respostas de erro para tool_call_ids deduplicados
+        for (const tc of dedupedToolCalls) {
+          messages.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: `Prompt duplicado detectado: "${tc.prompt?.substring(0, 60) || ''}". Nenhuma ação executada para evitar repetição.`
+          });
+          logger.debug('ToolExecutionOrchestrator', `Resposta de deduplicação adicionada para tool_call_id=${tc.id}`);
+        }
 
         // Interceptar erro crítico de tool (ex: Cannot find module)
         const lastToolMsg = messages.slice().reverse().find(m => m.role === 'tool' && typeof m.content === 'string');
@@ -94,75 +149,54 @@ class ToolExecutionOrchestrator {
    * Detecta e trata loops de geração de imagem
    * @private
    */
-  static _handleImageGenerationLoops(messages, lastResponse) {
+  // Nova versão: retorna também os tool_call_ids removidos
+  static _handleImageGenerationLoopsWithDedup(messages, lastResponse) {
     const toolNames = lastResponse.tool_calls?.map(tc => tc.function.name) || [];
     const hasRecentImageGeneration = toolNames.includes('image_generation');
-    
     if (!hasRecentImageGeneration) {
-      return lastResponse;
+      return { lastResponse, dedupedToolCalls: [] };
     }
 
-    // Obter o prompt atual da solicitação
-    const currentImagePrompt = lastResponse.tool_calls
+    // Obter prompts e ids das solicitações
+    const dedupedToolCalls = [];
+    const currentImagePrompts = lastResponse.tool_calls
       .filter(tc => tc.function.name === 'image_generation')
       .map(tc => {
         try {
           const args = JSON.parse(tc.function.arguments);
-          return args.prompt;
+          return { prompt: args.prompt, id: tc.id };
         } catch (e) {
-          return null;
+          return { prompt: null, id: tc.id };
         }
-      })[0];
+      });
 
-    if (!currentImagePrompt) {
-      return lastResponse;
+    for (const { prompt, id } of currentImagePrompts) {
+      if (!prompt) continue;
+      // Só deduplicar se houver repetição no mesmo ciclo (mesma mensagem)
+      const currentCycleImageCalls = lastResponse.tool_calls
+        .filter(tc => tc.function.name === 'image_generation')
+        .map(tc => {
+          try { return JSON.parse(tc.function.arguments).prompt; } catch (e) { return null; }
+        })
+        .filter(p => p && p === prompt);
+      const isImmediateLoop = currentCycleImageCalls.length > 1;
+      // Não bloqueia mais repetições em mensagens diferentes do usuário
+      if (isImmediateLoop) {
+        logger.debug('ToolExecutionOrchestrator', `🖼️ LOOP detectado - prompt "${prompt?.substring(0, 50) || ''}..." repetido no mesmo ciclo - removendo duplicação`);
+        dedupedToolCalls.push({ id, prompt });
+      }
     }
-
-    // Verificar loop imediato (múltiplas tentativas do mesmo prompt neste ciclo)
-    const currentCycleImageCalls = lastResponse.tool_calls
-      .filter(tc => tc.function.name === 'image_generation')
-      .map(tc => {
-        try { 
-          return JSON.parse(tc.function.arguments).prompt; 
-        } catch (e) { 
-          return null; 
-        }
-      })
-      .filter(p => p && p === currentImagePrompt);
-
-    const isImmediateLoop = currentCycleImageCalls.length > 1;
-    
-    // Verificar loop recente (mesmo prompt nas últimas 5 mensagens)
-    const recentMessages = messages.slice(-5);
-    const samePromptInRecentCycle = recentMessages.some(msg => 
-      msg.role === 'assistant' && 
-      msg.tool_calls && 
-      msg.tool_calls.some(tc => {
-        if (tc.function.name === 'image_generation') {
-          try {
-            const args = JSON.parse(tc.function.arguments);
-            return args.prompt === currentImagePrompt;
-          } catch (e) {
-            return false;
-          }
-        }
-        return false;
-      })
-    );
-
-    if (isImmediateLoop || samePromptInRecentCycle) {
-      logger.debug('ToolExecutionOrchestrator', `🖼️ LOOP detectado - prompt "${currentImagePrompt.substring(0, 50)}..." executado recentemente - removendo duplicação`);
-      
-      // Remover tool_calls duplicadas de image_generation
-      lastResponse.tool_calls = lastResponse.tool_calls.filter(tc => 
-        !(tc.function.name === 'image_generation' && 
-          JSON.parse(tc.function.arguments).prompt === currentImagePrompt)
-      );
-    } else {
-      logger.debug('ToolExecutionOrchestrator', `🖼️ Nova solicitação de imagem detectada: "${currentImagePrompt.substring(0, 50)}..."`);
-    }
-
-    return lastResponse;
+    // Remover tool_calls duplicadas
+    lastResponse.tool_calls = lastResponse.tool_calls.filter(tc => {
+      try {
+        if (tc.function.name !== 'image_generation') return true;
+        const args = JSON.parse(tc.function.arguments);
+        return !dedupedToolCalls.some(d => d.id === tc.id);
+      } catch (e) {
+        return true;
+      }
+    });
+    return { lastResponse, dedupedToolCalls };
   }
 
   /**

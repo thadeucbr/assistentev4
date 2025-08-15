@@ -17,7 +17,7 @@ const MODEL_TOKEN_LIMITS = {
   'gpt-3.5-turbo': 16385,
   'gpt-3.5-turbo-1106': 16385,
   'gpt-3.5-turbo-instruct': 4096,
-
+  'gpt-5-mini-2025-08-07': 128000,
   // Ollama Models (limits are often configurable, but these are common defaults)
   'llama3': 8192,
   'codellama': 16000,

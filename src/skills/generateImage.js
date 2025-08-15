@@ -4,7 +4,9 @@ import { retryAiJsonCall } from '../utils/aiResponseUtils.js';
 import { logError } from '../utils/logger.js';
 import { generateImageWithDallE } from '../services/OpenAIDalleService.js';
 import { generateImageWithGPT5Nano } from '../services/GPT5NanoImageService.js';
+
 import { generateImageWithOpenAITool } from '../services/OpenAIImageToolService.js';
+import sendImage from '../whatsapp/sendImage.js';
 
 const SD_API_URL = env.SDAPI_URL || 'http://127.0.0.1:7860';
 const SD_USERNAME = env.SDAPI_USR;
@@ -181,6 +183,7 @@ IMPORTANTE: Sua resposta deve ser APENAS o objeto JSON. Não inclua texto antes 
 
 export default async function generateImage({ 
   prompt: userPrompt, 
+  userId, // novo parâmetro obrigatório
   seed = -1, 
   subseed = -1, 
   subseed_strength = 0, 
@@ -255,7 +258,13 @@ export default async function generateImage({
       console.log('Imagem gerada com sucesso usando Stable Diffusion');
     }
 
-    return imageResult;
+
+    // Envia a imagem via WhatsApp
+    if (!userId) {
+      throw new Error('userId é obrigatório para envio da imagem via WhatsApp');
+    }
+    await sendImage(userId, imageResult, userPrompt);
+    return `imagem ${userPrompt} enviado para o usuario com sucesso`;
 
   } catch (err) {
     logError(err, 'generateImage - Failed to generate image');
