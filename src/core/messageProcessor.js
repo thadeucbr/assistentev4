@@ -80,7 +80,15 @@ class MessageProcessor {
       }
 
       // === FASE 7: PREPARAÇÃO E GERAÇÃO DE RESPOSTA ===
-      const sanitizedChatMessages = AIResponseProcessor.prepareChatMessages(dynamicPrompt, messages, userContent);
+      // Patch: manter apenas a última mensagem do usuário no contexto para evitar múltiplas respostas fora de contexto
+      const lastUserIndex = [...messages].reverse().findIndex(msg => msg.role === 'user');
+      let filteredMessages = messages;
+      if (lastUserIndex !== -1) {
+        // Pega apenas a última mensagem do usuário e todas as mensagens após ela (se houver)
+        const idx = messages.length - 1 - lastUserIndex;
+        filteredMessages = messages.slice(idx);
+      }
+      const sanitizedChatMessages = AIResponseProcessor.prepareChatMessages(dynamicPrompt, filteredMessages, userContent);
       const { mcpExecutor, dynamicTools } = await AIResponseProcessor.getAvailableTools();
       
       let response;
