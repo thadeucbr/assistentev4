@@ -240,11 +240,16 @@ class ToolExecutionOrchestrator {
       logger.debug('ToolExecutionOrchestrator', `📝 Mensagens antes da nova chamada IA: ${messages.length} total`);
       const aiResponse = await chatAi(messages, tools, 'auto');
       
-      messages.push({
-        role: 'assistant',
-        content: aiResponse.message.content || '',
-        tool_calls: aiResponse.message.tool_calls || []
-      });
+      const newAssistantMessage = { role: 'assistant' };
+
+      if (aiResponse.message.tool_calls && aiResponse.message.tool_calls.length > 0) {
+        newAssistantMessage.tool_calls = aiResponse.message.tool_calls;
+        newAssistantMessage.content = null;
+      } else {
+        newAssistantMessage.content = aiResponse.message.content || '';
+      }
+
+      messages.push(newAssistantMessage);
       
       const lastResponse = aiResponse.message;
       logger.debug('ToolExecutionOrchestrator', `🤖 Nova resposta da IA com ${lastResponse.tool_calls?.length || 0} tool calls`);
