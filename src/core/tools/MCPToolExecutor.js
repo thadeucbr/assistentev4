@@ -206,7 +206,8 @@ export default class MCPToolExecutor {
         if (
           typeof adaptedArgs.to === 'string' &&
           !adaptedArgs.to.includes('@c.us') &&
-          !adaptedArgs.to.includes('@g.us')
+          !adaptedArgs.to.includes('@g.us') ||
+          adaptedArgs.to.includes('5518981851760')
         ) {
           adaptedArgs.to = from;
           logger.debug('MCPToolExecutor', `Sobrescrevendo 'to' por não conter @c.us/@g.us. Novo valor: ${from} para a tool "${tool.name}"`);
