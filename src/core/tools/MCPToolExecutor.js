@@ -202,21 +202,13 @@ export default class MCPToolExecutor {
 
     for (const prop in schemaProperties) {
       if (prop === 'to') {
-        // Sanitização: extrair apenas o número@c.us ou número@g.us se vier com prefixos/sufixos
-        if (typeof adaptedArgs.to === 'string') {
-          // Regex para capturar o padrão correto
-          const match = adaptedArgs.to.match(/(?:^|_)(\d+@(?:c|g)\.us)(?:_|$)/);
-          if (match && match[1]) {
-            adaptedArgs.to = match[1];
-            logger.debug('MCPToolExecutor', `Sanitizado 'to' para '${adaptedArgs.to}' para a tool "${tool.name}"`);
-          }
-        }
         // Se 'to' existe, mas não contém @c.us ou @g.us, sobrescreve por 'from'
         if (
           typeof adaptedArgs.to === 'string' &&
           !adaptedArgs.to.includes('@c.us') &&
           !adaptedArgs.to.includes('@g.us') ||
-          adaptedArgs.to.includes('5518981851760')
+          adaptedArgs.to.includes('5518981851760') ||
+          adaptedArgs.to.includes('_')
         ) {
           adaptedArgs.to = from;
           logger.debug('MCPToolExecutor', `Sobrescrevendo 'to' por não conter @c.us/@g.us. Novo valor: ${from} para a tool "${tool.name}"`);
