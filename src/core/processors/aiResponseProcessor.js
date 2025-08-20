@@ -53,7 +53,7 @@ class AIResponseProcessor {
     
     try {
       const aiStartTime = Date.now();
-      let response = await chatAi(sanitizedChatMessages, dynamicTools);
+      let response = await chatAi(sanitizedChatMessages, dynamicTools, 'required');
       const aiEndTime = Date.now();
       
       response = normalizeAiResponse(response);

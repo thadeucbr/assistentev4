@@ -170,7 +170,7 @@ function sanitizeMessages(messages) {
 }
 
 
-export default async function openAiChat(chatMessages, toolsParam) {
+export default async function openAiChat(chatMessages, toolsParam, toolChoice) {
   const startTime = Date.now();
   
   chatMessages = sanitizeMessages(chatMessages);
@@ -203,8 +203,8 @@ export default async function openAiChat(chatMessages, toolsParam) {
 
   if (toolsToUse) {
     body.tools = toolsToUse;
-    body.tool_choice = 'required'; // Force the model to use a tool
-    logger.debug('OpenAI', `Usando ${toolsToUse.length} ferramentas com tool_choice=required`);
+    body.tool_choice = toolChoice || 'auto';
+    logger.debug('OpenAI', `Usando ${toolsToUse.length} ferramentas com tool_choice=${body.tool_choice}`);
   }
 
   try {
