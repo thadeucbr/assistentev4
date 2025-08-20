@@ -2,6 +2,7 @@ import { sanitizeMessagesForChat } from '../processors/messageSanitizer.js';
 import STMManager from '../memory/stmManager.js';
 import chatAi from '../../config/ai/chat.ai.js';
 import logger from '../../utils/logger.js';
+import sendMessage from '../../whatsapp/sendMessage.js';
 
 /**
  * Orquestrador dedicado à execução de ferramentas (tools)
@@ -121,7 +122,27 @@ class ToolExecutionOrchestrator {
         this._addFallbackToolResponses(messages, lastResponse);
         break;
       } else {
-        logger.debug('ToolExecutionOrchestrator', '✅ Sem tool_calls - encerrando ciclo normalmente');
+        if (lastResponse.content && (!lastResponse.tool_calls || lastResponse.tool_calls.length === 0)) {
+          logger.warn('ToolExecutionOrchestrator', '[FALLBACK] A LLM respondeu com uma mensagem direta. Enviando para o usuário.');
+          await sendMessage(data.from, lastResponse.content);
+
+          const fallbackAssistant = {
+            role: 'assistant',
+            content: lastResponse.content,
+          };
+          messages.push(fallbackAssistant);
+
+          const fallbackTool = {
+            role: 'tool',
+            tool_call_id: `call_direct_fallback_${Date.now()}`,
+            content: `Mensagem enviada diretamente ao usuário: "${lastResponse.content}"`
+          };
+          messages.push(fallbackTool);
+
+          logger.info('ToolExecutionOrchestrator', '✅ Fallback: Mensagem direta enviada ao usuário.');
+        } else {
+          logger.debug('ToolExecutionOrchestrator', '✅ Sem tool_calls - encerrando ciclo normalmente');
+        }
         break;
       }
 
