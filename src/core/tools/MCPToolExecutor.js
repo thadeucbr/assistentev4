@@ -182,7 +182,7 @@ export default class MCPToolExecutor {
    * inspecionando o schema da ferramenta.
    */
   adaptArgsForMCP(tool, args, from, messageData) {
-    const adaptedArgs = { ...args };
+  const adaptedArgs = { ...args };
 
     if (!tool || !tool.inputSchema || !tool.inputSchema.properties) {
       return adaptedArgs;
@@ -202,6 +202,15 @@ export default class MCPToolExecutor {
 
     for (const prop in schemaProperties) {
       if (prop === 'to') {
+        // Sanitização: extrair apenas o número@c.us ou número@g.us se vier com prefixos/sufixos
+        if (typeof adaptedArgs.to === 'string') {
+          // Regex para capturar o padrão correto
+          const match = adaptedArgs.to.match(/(?:^|_)(\d+@(?:c|g)\.us)(?:_|$)/);
+          if (match && match[1]) {
+            adaptedArgs.to = match[1];
+            logger.debug('MCPToolExecutor', `Sanitizado 'to' para '${adaptedArgs.to}' para a tool "${tool.name}"`);
+          }
+        }
         // Se 'to' existe, mas não contém @c.us ou @g.us, sobrescreve por 'from'
         if (
           typeof adaptedArgs.to === 'string' &&
