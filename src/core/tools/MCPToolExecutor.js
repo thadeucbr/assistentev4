@@ -102,17 +102,41 @@ export default class MCPToolExecutor {
         // Executar via MCP com retry
         const mcpResult = await this.executeWithRetry(toolName, mcpArgs);
 
+
         // Processar resultado do MCP
         const toolResult = this.processMCPResult(toolName, mcpResult, from);
+
+        // Validação de sucesso MCP para evitar loops de envio duplicado
+        let mcpSuccess = false;
+        if (
+          mcpResult &&
+          mcpResult.success === true &&
+          mcpResult.data &&
+          mcpResult.data.success === true
+        ) {
+          mcpSuccess = true;
+          logger.debug('MCPToolExecutor', `Execução bem-sucedida para "${toolName}", evitando reenvio.`);
+        }
+
 
         const toolResponse = {
           role: 'tool',
           tool_call_id: toolCall.id,
           content: toolResult,
+          mcpSuccess // campo extra para controle externo
         };
 
         toolResponses.push(toolResponse);
         respondedToolCallIds.add(toolCall.id);
+
+
+        // Se qualquer tool teve sucesso, adiciona mensagem dinâmica de confirmação para a LLM
+        if (mcpSuccess) {
+          toolResponses.push({
+            role: 'system',
+            content: `A ferramenta "${toolName}" foi executada com sucesso (tool_call_id: ${toolCall.id}).`
+          });
+        }
 
         // Finalizar tracking da tool com sucesso
         logger.toolEnd(toolName, toolId, toolResult);
@@ -153,63 +177,58 @@ export default class MCPToolExecutor {
   }
 
   /**
-   * Adapta argumentos para o formato esperado pelo MCP
+   * Adapta dinamicamente os argumentos para o formato esperado pelo MCP,
+   * inspecionando o schema da ferramenta.
    */
-  adaptArgsForMCP(toolName, args, from, messageData) {
+  adaptArgsForMCP(tool, args, from, messageData) {
     const adaptedArgs = { ...args };
 
-    switch (toolName) {
-      case 'send_message':
-        // Para send_message, precisamos do destinatário e ID da mensagem para reply
-        adaptedArgs.to = from;
-        adaptedArgs.from = from; // Compatibilidade
-        if (messageData?.id) {
-          adaptedArgs.quotedMsgId = messageData.id;
+    if (!tool || !tool.inputSchema || !tool.inputSchema.properties) {
+      return adaptedArgs;
+    }
+
+    const schemaProperties = tool.inputSchema.properties;
+
+    // Injeção dinâmica de argumentos com base no schema
+    const injectionMap = {
+      to: from,
+      recipient: from,
+      recipientId: from,
+      userId: from,
+      from: from, // Para compatibilidade e contexto
+      quotedMsgId: messageData?.id,
+    };
+
+    for (const prop in schemaProperties) {
+      if (prop === 'to') {
+        // Se 'to' existe, mas não contém @c.us ou @g.us, sobrescreve por 'from'
+        if (
+          typeof adaptedArgs.to === 'string' &&
+          !adaptedArgs.to.includes('@c.us') &&
+          !adaptedArgs.to.includes('@g.us')
+        ) {
+          adaptedArgs.to = from;
+          logger.debug('MCPToolExecutor', `Sobrescrevendo 'to' por não conter @c.us/@g.us. Novo valor: ${from} para a tool "${tool.name}"`);
+        } else if (!adaptedArgs.to && injectionMap.to) {
+          adaptedArgs.to = injectionMap.to;
+          logger.debug('MCPToolExecutor', `Injetado 'to=${injectionMap.to}' dinamicamente para a tool "${tool.name}"`);
         }
-        break;
-        
-      case 'audio_generation':
-        // Para audio_generation, configurar envio automático
-        adaptedArgs.sendAudio = true; // Sempre enviar áudio quando gerado
-        adaptedArgs.to = from;
-        if (messageData?.id) {
-          adaptedArgs.quotedMsgId = messageData.id;
+      } else if (prop in injectionMap && !adaptedArgs[prop]) {
+        const value = injectionMap[prop];
+        if (value) {
+          adaptedArgs[prop] = value;
+          logger.debug('MCPToolExecutor', `Injetado '${prop}=${value}' dinamicamente para a tool "${tool.name}"`);
         }
-        break;
-        
-      case 'send_audio':
-        // Para send_audio, especificar destinatário
-        adaptedArgs.to = from;
-        if (messageData?.id) {
-          adaptedArgs.quotedMsgId = messageData.id;
-        }
-        break;
-        
-      case 'calendar_management':
-        adaptedArgs.userId = from;
-        break;
-        
-      case 'reminder_management':
-        adaptedArgs.userId = from;
-        break;
-        
-      case 'image_analysis':
-        if (messageData?.type === 'image' && messageData.id) {
-          adaptedArgs.id = messageData.id;
-        }
-        break;
-        
-      case 'image_generation':
-        // Para image_generation, sempre incluir destinatário para envio automático
-        adaptedArgs.from = from;
-        if (messageData?.id) {
-          adaptedArgs.quotedMsgId = messageData.id;
-        }
-        break;
-        
-      case 'user_profile_update':
-        adaptedArgs.userId = from;
-        break;
+      }
+    }
+
+    // Lógica específica que não pode ser inferida pelo schema
+    if (tool.name === 'audio_generation') {
+      adaptedArgs.sendAudio = true;
+    }
+    
+    if (tool.name === 'image_analysis' && messageData?.type === 'image' && messageData.id) {
+      adaptedArgs.id = messageData.id;
     }
 
     return adaptedArgs;
