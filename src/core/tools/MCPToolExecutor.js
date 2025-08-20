@@ -93,8 +93,11 @@ export default class MCPToolExecutor {
       logger.toolStart(toolName, toolId, args);
 
       try {
-        // Adaptar argumentos para MCP
-        const mcpArgs = this.adaptArgsForMCP(toolName, args, from, messageData);
+        // Encontrar a definição completa da tool para inspecionar o schema
+        const toolDefinition = this.availableTools.find(t => t.name === toolName);
+
+        // Adaptar argumentos para MCP de forma dinâmica
+        const mcpArgs = this.adaptArgsForMCP(toolDefinition, args, from, messageData);
 
         // Executar via MCP com retry
         const mcpResult = await this.executeWithRetry(toolName, mcpArgs);
