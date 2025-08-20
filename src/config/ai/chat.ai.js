@@ -3,7 +3,7 @@ import openAiChat from './openai/openAiChat.js';
 import logger from '../../utils/logger.js';
 import { checkTokenLimit } from '../../utils/tokenEstimator.js';
 
-export default async function chatAi(chatMessages, tools) {
+export default async function chatAi(chatMessages, tools, toolChoice) {
   const provider = process.env.AI_PROVIDER || 'openai'; // Default to openai
   const openAiModel = process.env.OPENAI_MODEL_NAME || 'gpt-4-turbo';
   const ollamaModel = process.env.OLLAMA_MODEL_NAME || 'llama3';
@@ -26,7 +26,7 @@ export default async function chatAi(chatMessages, tools) {
     // If Ollama is the provider, try it and fallback to OpenAI on error.
     try {
       logger.systemStatus('Ollama', 'connecting');
-      const result = await ollamaChat(chatMessages, tools);
+      const result = await ollamaChat(chatMessages, tools, toolChoice);
       logger.systemStatus('Ollama', 'online');
       return result;
     } catch (err) {
@@ -37,7 +37,7 @@ export default async function chatAi(chatMessages, tools) {
         logger.systemStatus('OpenAI', 'connecting');
         // Check token limit for the fallback provider
         checkTokenLimit(chatMessages, openAiModel);
-        const result = await openAiChat(chatMessages, tools);
+        const result = await openAiChat(chatMessages, tools, toolChoice);
         logger.systemStatus('OpenAI', 'online');
         return result;
       } catch (fallbackErr) {
@@ -53,7 +53,7 @@ export default async function chatAi(chatMessages, tools) {
     // If OpenAI is the provider, handle rate limits gracefully
     try {
       logger.systemStatus('OpenAI', 'connecting');
-      const result = await openAiChat(chatMessages, tools);
+      const result = await openAiChat(chatMessages, tools, toolChoice);
       logger.systemStatus('OpenAI', 'online');
       return result;
     } catch (err) {
@@ -65,7 +65,7 @@ export default async function chatAi(chatMessages, tools) {
           logger.systemStatus('Ollama', 'connecting');
           // Check token limit for the fallback provider
           checkTokenLimit(chatMessages, ollamaModel);
-          const result = await ollamaChat(chatMessages, tools);
+          const result = await ollamaChat(chatMessages, tools, toolChoice);
           logger.systemStatus('Ollama', 'online');
           return result;
         } catch (fallbackErr) {

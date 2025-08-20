@@ -107,9 +107,9 @@ class ToolExecutionOrchestrator {
         }
 
         // Verificar se send_message foi executado
-        sendMessageFound = lastResponse.tool_calls?.some(tc => tc.function.name === 'send_message');
+        sendMessageFound = lastResponse.tool_calls?.some(tc => tc.function.name === 'whatsapp-send-message');
         if (sendMessageFound) {
-          logger.debug('ToolExecutionOrchestrator', '✅ Send_message executado - finalizando ciclo');
+          logger.debug('ToolExecutionOrchestrator', '✅ whatsapp-send-message executado - finalizando ciclo');
           break;
         }
 
@@ -132,15 +132,15 @@ class ToolExecutionOrchestrator {
     const hasValidSendMessage = messages.some(m =>
       m.role === 'assistant' &&
       m.tool_calls &&
-      m.tool_calls.some(tc => tc.function.name === 'send_message') &&
+      m.tool_calls.some(tc => tc.function.name === 'whatsapp-send-message') &&
       (
         // Verifica se há conteúdo não nulo/vazio associado ao send_message
         (typeof m.content === 'string' && m.content.trim().length > 0) ||
         (Array.isArray(m.content) && m.content.length > 0)
       )
     );
-    if ((!hasValidSendMessage && !sendMessageFound) || messages.filter(m => m.role === 'assistant' && m.tool_calls && m.tool_calls.some(tc => tc.function.name === 'send_message')).every(m => !m.content || (typeof m.content === 'string' && m.content.trim().length === 0))) {
-      logger.warn('ToolExecutionOrchestrator', '[ROBUST-FALLBACK] Nenhum send_message válido (com conteúdo) detectado após ciclo de ferramentas. Forçando fallback para garantir resposta ao usuário.');
+    if ((!hasValidSendMessage && !sendMessageFound) || messages.filter(m => m.role === 'assistant' && m.tool_calls && m.tool_calls.some(tc => tc.function.name === 'whatsapp-send-message')).every(m => !m.content || (typeof m.content === 'string' && m.content.trim().length === 0))) {
+      logger.warn('ToolExecutionOrchestrator', '[ROBUST-FALLBACK] Nenhum whatsapp-send-message válido (com conteúdo) detectado após ciclo de ferramentas. Forçando fallback para garantir resposta ao usuário.');
       await this._handleFinalFallback(messages, data);
     }
   }
@@ -238,13 +238,18 @@ class ToolExecutionOrchestrator {
     
     try {
       logger.debug('ToolExecutionOrchestrator', `📝 Mensagens antes da nova chamada IA: ${messages.length} total`);
-      const aiResponse = await chatAi(messages, tools);
+      const aiResponse = await chatAi(messages, tools, 'auto');
       
-      messages.push({
-        role: 'assistant',
-        content: aiResponse.message.content || '',
-        tool_calls: aiResponse.message.tool_calls || []
-      });
+      const newAssistantMessage = { role: 'assistant' };
+
+      if (aiResponse.message.tool_calls && aiResponse.message.tool_calls.length > 0) {
+        newAssistantMessage.tool_calls = aiResponse.message.tool_calls;
+        newAssistantMessage.content = null;
+      } else {
+        newAssistantMessage.content = aiResponse.message.content || '';
+      }
+
+      messages.push(newAssistantMessage);
       
       const lastResponse = aiResponse.message;
       logger.debug('ToolExecutionOrchestrator', `🤖 Nova resposta da IA com ${lastResponse.tool_calls?.length || 0} tool calls`);
@@ -281,10 +286,10 @@ class ToolExecutionOrchestrator {
     const hasSendMessage = messages.some(m => 
       m.role === 'assistant' && 
       m.tool_calls && 
-      m.tool_calls.some(tc => tc.function.name === 'send_message')
+      m.tool_calls.some(tc => tc.function.name === 'whatsapp-send-message')
     );
     
-    logger.debug('ToolExecutionOrchestrator', `🔍 Verificação send_message: ${hasSendMessage ? 'ENCONTRADO' : 'NÃO ENCONTRADO'}`);
+    logger.debug('ToolExecutionOrchestrator', `🔍 Verificação whatsapp-send-message: ${hasSendMessage ? 'ENCONTRADO' : 'NÃO ENCONTRADO'}`);
     
     if (!hasSendMessage) {
       logger.warn('ToolExecutionOrchestrator', '⚠️ Fallback final: Solicitando à LLM uma mensagem amigável de erro.');
@@ -322,7 +327,7 @@ class ToolExecutionOrchestrator {
             id: `call_fallback_${Date.now()}`,
             type: 'function',
             function: {
-              name: 'send_message',
+              name: 'whatsapp-send-message',
               arguments: JSON.stringify({ content: fallbackContent })
             }
           }
@@ -342,7 +347,7 @@ class ToolExecutionOrchestrator {
       messages.push(fallbackTool);
       logger.info('ToolExecutionOrchestrator', '✅ Fallback final: Mensagem de erro amigável enviada ao usuário.');
     } else {
-      logger.debug('ToolExecutionOrchestrator', '✅ Send_message encontrado - não precisa de fallback');
+      logger.debug('ToolExecutionOrchestrator', '✅ whatsapp-send-message encontrado - não precisa de fallback');
     }
   }
 }
