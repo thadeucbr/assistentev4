@@ -119,23 +119,24 @@ export default class MCPToolExecutor {
         }
 
 
+
+        // Mensagem de tool, seguindo padrão OpenAI
         const toolResponse = {
           role: 'tool',
           tool_call_id: toolCall.id,
-          content: toolResult,
-          mcpSuccess // campo extra para controle externo
+          content: toolResult
         };
-
         toolResponses.push(toolResponse);
         respondedToolCallIds.add(toolCall.id);
 
-
-        // Se qualquer tool teve sucesso, adiciona mensagem dinâmica de confirmação para a LLM
+        // Após tool, sempre adicionar uma mensagem assistant normal para encerrar ciclo function-calling
         if (mcpSuccess) {
-          toolResponses.push({
-            role: 'system',
-            content: `A ferramenta "${toolName}" foi executada com sucesso (tool_call_id: ${toolCall.id}).`
-          });
+          const assistantMsg = {
+            role: 'assistant',
+            content: typeof toolResult === 'string' ? toolResult : 'Operação realizada com sucesso.'
+          };
+          toolResponses.push(assistantMsg);
+          newMessages.push(assistantMsg);
         }
 
         // Finalizar tracking da tool com sucesso
