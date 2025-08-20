@@ -238,7 +238,7 @@ class ToolExecutionOrchestrator {
     
     try {
       logger.debug('ToolExecutionOrchestrator', `📝 Mensagens antes da nova chamada IA: ${messages.length} total`);
-      const aiResponse = await chatAi(messages, tools);
+      const aiResponse = await chatAi(messages, tools, 'auto');
       
       messages.push({
         role: 'assistant',
