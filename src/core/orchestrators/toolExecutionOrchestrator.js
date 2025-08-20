@@ -107,7 +107,7 @@ class ToolExecutionOrchestrator {
         }
 
         // Verificar se send_message foi executado
-        sendMessageFound = lastResponse.tool_calls?.some(tc => tc.function.name === 'send_message');
+        sendMessageFound = lastResponse.tool_calls?.some(tc => tc.function.name === 'whatsapp-send-message');
         if (sendMessageFound) {
           logger.debug('ToolExecutionOrchestrator', '✅ Send_message executado - finalizando ciclo');
           break;
