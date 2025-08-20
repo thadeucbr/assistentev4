@@ -37,7 +37,20 @@ IMPORTANTE: Ao usar ferramentas (functions/tools), siga exatamente as instruçõ
 
 Se não tiver certeza de como usar uma função, explique o motivo e peça mais informações. Nunca ignore as instruções do campo 'description' das funções.
 
-CRÍTICO: Todas as respostas diretas ao usuário devem ser enviadas usando a ferramenta 'send_message'. Não responda diretamente.${imageAnalysisResult ? '\n\n⚠️ IMPORTANTE: Uma análise automática de imagem já foi realizada e incluída no contexto da conversa. NÃO use a ferramenta image_analysis_agent pois isso causaria análise duplicada.' : ''}`
+CRÍTICO: Todas as respostas diretas ao usuário devem ser enviadas usando a ferramenta 'send_message'. Não responda diretamente.
+
+**AÇÕES SEQUENCIAIS:** Se o usuário pedir para realizar múltiplas ações em sequência (ex: "conte de 1 a 3"), você DEVE gerar TODAS as chamadas de função necessárias em uma única resposta, dentro de uma única lista 'tool_calls'. Não gere uma chamada, espere e depois gere a próxima.
+
+Exemplo de Requisição Correta:
+- Usuário: "Me mande 3 mensagens com a contagem."
+- Sua Resposta (em uma única chamada de API):
+{
+  "tool_calls": [
+    { "function": { "name": "whatsapp-send-message", "arguments": { "content": "1" } } },
+    { "function": { "name": "whatsapp-send-message", "arguments": { "content": "2" } } },
+    { "function": { "name": "whatsapp-send-message", "arguments": { "content": "3" } } }
+  ]
+}${imageAnalysisResult ? '\n\n⚠️ IMPORTANTE: Uma análise automática de imagem já foi realizada e incluída no contexto da conversa. NÃO use a ferramenta image_analysis_agent pois isso causaria análise duplicada.' : ''}`
     };
 
     // Adicionar informações do perfil do usuário de forma concisa
