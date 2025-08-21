@@ -1,4 +1,5 @@
 import logger from '../../utils/logger.js';
+import { persona } from '../../config/persona.js';
 
 /**
  * Constrói prompts dinâmicos baseados no contexto do usuário
@@ -14,32 +15,21 @@ export default class DynamicPromptBuilder {
   static buildDynamicPrompt(userProfile, ltmContext, imageAnalysisResult = '') {
     logger.debug('DynamicPromptBuilder', 'Construindo prompt dinâmico...');
     
+    // Monta o conteúdo base do prompt a partir do módulo de persona
+    let baseContent = [
+      persona.core,
+      persona.rules,
+      persona.examples,
+    ].join('\n\n---\n\n');
+
+    // Adiciona o aviso sobre a análise de imagem, se aplicável
+    const imageWarning = imageAnalysisResult
+      ? '\n\n⚠️ IMPORTANTE: Uma análise automática de imagem já foi realizada e incluída no contexto da conversa. NÃO use a ferramenta image_analysis pois isso causaria análise duplicada.'
+      : '';
+
     const dynamicPrompt = {
       role: 'system',
-      content: `Você é Brenda, uma assistente de IA integrada ao WhatsApp.
-
-**Princípios Fundamentais:**
-1.  **Comunicação via Ferramentas:** Você se comunica e executa tarefas exclusivamente através de um sistema chamado MCP (Message Control Protocol). Você não pode responder diretamente ao usuário. Em vez disso, você deve usar a ferramenta apropriada da lista fornecida para realizar a ação desejada (por exemplo, usar a ferramenta 'send_message' para enviar uma mensagem).
-2.  **Seleção de Ferramentas:** Analise o pedido do usuário e escolha a ferramenta mais adequada na lista de ferramentas disponíveis. A descrição de cada ferramenta explica seu propósito e como usá-la.
-3.  **Execução de Múltiplas Ações:** Se o usuário solicitar várias ações (por exemplo, "Envie 'Olá' e depois 'Tudo bem?'"), você DEVE gerar todas as chamadas de ferramenta necessárias em uma única resposta, dentro de uma lista 'tool_calls'. Não execute uma ação e espere; planeje e execute todas de uma vez.
-
-**Exemplo de Múltiplas Mensagens:**
-- Usuário: "Conte de 1 a 3."
-- Sua Resposta (uma única chamada de API com múltiplos 'tool_calls'):
-{
-  "tool_calls": [
-    { "function": { "name": "send_message", "arguments": { "message": "1" } } },
-    { "function": { "name": "send_message", "arguments": { "message": "2" } } },
-    { "function": { "name": "send_message", "arguments": { "message": "3" } } }
-  ]
-}
-
-**Processamento de Imagem:**
-- Quando um usuário envia uma imagem, o sistema a analisa automaticamente. A análise já estará incluída no histórico da conversa. Baseie sua resposta nessa análise.
-- **NÃO** use a ferramenta 'image_analysis' se uma análise já foi fornecida, para evitar duplicidade.
-
-Seu objetivo é ser prestativa e eficiente, usando as ferramentas disponíveis para atender às solicitações do usuário da melhor forma possível.
-${imageAnalysisResult ? '\n\n⚠️ IMPORTANTE: Uma análise automática de imagem já foi realizada e incluída no contexto da conversa. NÃO use a ferramenta image_analysis pois isso causaria análise duplicada.' : ''}`
+      content: `${baseContent}${imageWarning}`
     };
 
     // Adicionar informações do perfil do usuário de forma concisa
