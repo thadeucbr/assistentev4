@@ -17,7 +17,7 @@ class ContextDistiller {
 
     // Encontrar o índice da última mensagem do usuário para isolar o turno.
     const lastUserMessageIndex = messages.map(m => m.role).lastIndexOf('user');
-
+    
     // Se não houver mensagem de usuário, não há o que destilar.
     if (lastUserMessageIndex === -1) {
       logger.debug('ContextDistiller', 'Nenhuma mensagem de usuário encontrada. Nenhuma destilação necessária.');
@@ -44,16 +44,20 @@ class ContextDistiller {
       Este resumo substituirá todo o turno no histórico de longo prazo.
 
       Exemplo:
-      - Turno Original: O usuário pede para enviar 4 imagens e 4 textos. A IA faz 8 chamadas de ferramenta (4 para gerar imagens, 4 para enviar textos).
-      - Seu Resumo Ideal: "Atendendo ao pedido do usuário, gerei e enviei uma narrativa visual composta por 4 imagens e 4 textos intercalados, contando uma história fictícia sobre a personagem Brenda."
+      - Turno Original: O usuário pede para gerar uma imagem de um "gato astronauta". A IA usa a ferramenta 'whatsapp-send-image' com o prompt "gato astronauta" e seed "123".
+      - Seu Resumo Ideal:
+      "Gerei e enviei a imagem solicitada de um gato astronauta.
+      **Parâmetros Utilizados:**
+      - 'whatsapp-send-image': prompt='gato astronauta', seed=123, steps=25"
+
+      Seu resumo DEVE conter essas duas partes: um parágrafo em linguagem natural e uma lista de **Parâmetros Utilizados** com os argumentos mais importantes das ferramentas.
 
       ---
       Turno da Conversa para Analisar:
       ${turnAsString}
       ---
 
-      Agora, gere o resumo conciso em um único parágrafo do que o assistente realizou neste turno.
-      Responda APENAS com o texto do resumo.
+      Agora, gere o resumo conciso e estruturado do que o assistente realizou neste turno.
     `;
 
     try {
@@ -73,7 +77,7 @@ class ContextDistiller {
       };
 
       logger.milestone('ContextDistiller', `Turno destilado com sucesso: "${summary.substring(0, 150)}..."`);
-
+      
       // Retorna o histórico anterior mais a mensagem do usuário e o novo resumo do assistente.
       return [...previousMessages, messages[lastUserMessageIndex], distilledMessage];
 
