@@ -28,7 +28,6 @@ function isImageContent(content) {
   if (/^https?:\/\/mmg\.whatsapp\.net\//.test(content)) return true;
   return false;
 }
-
 /**
  * Sanitiza e adapta mensagens para o formato da OpenAI, incluindo suporte a imagens.
  */
@@ -97,7 +96,9 @@ function sanitizeMessages(messages) {
       // Mensagem normal de texto
       message.content = message.content;
     }
-
+    if (message.content) {
+      message.content = message?.content?.replace(/5518981851760/gi, 'Brenda,');
+    }
     // Ensure content is not null (unless tool_calls are present)
     if (message.content === null && !message.tool_calls) {
       message.content = '';
@@ -172,7 +173,7 @@ function sanitizeMessages(messages) {
 
 export default async function openAiChat(chatMessages, toolsParam, toolChoice) {
   const startTime = Date.now();
-  
+
   chatMessages = sanitizeMessages(chatMessages);
   if (!OPENAI_KEY) {
     throw new Error('Missing OPENAI_API_KEY environment variable');
@@ -209,7 +210,7 @@ export default async function openAiChat(chatMessages, toolsParam, toolChoice) {
 
   try {
     logger.systemStatus('OpenAI-API', 'connecting');
-    
+
     const response = await fetch(OPENAI_URL, {
       method: 'POST',
       headers: {
@@ -223,14 +224,14 @@ export default async function openAiChat(chatMessages, toolsParam, toolChoice) {
 
     if (!response.ok) {
       const errText = await response.text();
-      
+
       logger.error('OpenAI', `Resposta HTTP ${response.status}`, {
         status: response.status,
         responseText: errText.substring(0, 500),
         requestModel: OPENAI_MODEL,
         responseTime: `${responseTime}ms`
       });
-      
+
       // Parse error details for better handling
       let errorDetails;
       try {
@@ -238,10 +239,10 @@ export default async function openAiChat(chatMessages, toolsParam, toolChoice) {
       } catch {
         errorDetails = { error: { message: errText } };
       }
-      
+
       // Handle rate limits gracefully
       if (response.status === 429) {
-        logger.systemStatus('OpenAI-API', 'warning', { 
+        logger.systemStatus('OpenAI-API', 'warning', {
           reason: 'rate-limit',
           responseTime: `${responseTime}ms`
         });
@@ -250,7 +251,7 @@ export default async function openAiChat(chatMessages, toolsParam, toolChoice) {
         error.statusCode = 429;
         throw error;
       }
-      
+
       // Handle other errors
       logger.systemStatus('OpenAI-API', 'error', {
         status: response.status,
@@ -283,10 +284,10 @@ export default async function openAiChat(chatMessages, toolsParam, toolChoice) {
     return {
       message: choices[0]?.message
     };
-    
+
   } catch (error) {
     const responseTime = Date.now() - startTime;
-    
+
     if (!error.statusCode) {
       // Network or other unexpected errors
       logger.systemStatus('OpenAI-API', 'error', {
@@ -295,13 +296,13 @@ export default async function openAiChat(chatMessages, toolsParam, toolChoice) {
         type: 'network-error'
       });
     }
-    
+
     logger.error('OpenAI', `Erro na chamada OpenAI: ${error.message}`, {
       responseTime: `${responseTime}ms`,
       isRateLimit: error.isRateLimit || false,
       statusCode: error.statusCode
     });
-    
+
     throw error;
   }
 }
