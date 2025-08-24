@@ -1,4 +1,4 @@
-import { chatAi } from '../../config/ai/chat.ai.js';
+import chatAi from '../../config/ai/chat.ai.js';
 import logger from '../../utils/logger.js';
 
 /**
