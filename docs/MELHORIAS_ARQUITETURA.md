@@ -31,6 +31,12 @@ As melhorias foram focadas em **ativar e integrar** esses componentes avançados
     *   Se o usuário é formal, o prompt instrui a IA a espelhar esse estilo.
 *   **Por que foi feito:** Esta foi a melhoria mais crucial, pois realiza a visão do "Prompt Mestre" e da "Persona Adaptativa" dos documentos de arquitetura. O agente não tem mais uma personalidade única, mas uma que se adapta dinamicamente para criar uma experiência de usuário verdadeiramente personalizada, construindo rapport e aumentando a eficácia da comunicação.
 
+### 4. Otimização da Memória de Longo Prazo (Context Distiller)
+
+*   **Problema:** Foi observado que, ao executar tarefas com múltiplas ferramentas (como gerar várias imagens e textos), o histórico da conversa salvo no banco de dados se tornava excessivamente grande. Isso ocorria porque todas as chamadas de ferramentas e suas respostas JSON detalhadas eram salvas, aumentando o custo e a latência de futuras consultas.
+*   **Solução:** Criei um novo módulo chamado **`ContextDistiller`**. Antes de salvar o histórico de uma conversa no banco de dados, este módulo analisa o último turno da conversa. Se o turno contém chamadas de ferramentas, ele usa uma LLM para criar um resumo conciso e em linguagem natural do que o assistente realizou. Apenas este resumo é salvo, em vez da lista detalhada de `tool_calls`.
+*   **Por que foi feito:** Esta abordagem resolve o problema de "inchaço" do contexto de forma definitiva. Garante que a Memória de Longo Prazo (LTM) permaneça enxuta, relevante e otimizada, armazenando o *resultado* das ações do agente, e não os detalhes técnicos de sua execução. Isso torna o sistema mais eficiente, escalável e econômico a longo prazo.
+
 ## Conclusão
 
-Com essas três melhorias interligadas, a arquitetura do agente foi elevada a um novo patamar de sofisticação. O sistema agora gerencia sua memória de forma inteligente, compreende a intenção situacional do usuário e adapta sua personalidade e estratégia de raciocínio em tempo real, resultando em um assistente virtual mais capaz, coerente e eficaz.
+Com essas quatro melhorias interligadas, a arquitetura do agente foi elevada a um novo patamar de sofisticação. O sistema agora gerencia sua memória de forma inteligente, compreende a intenção situacional do usuário, adapta sua personalidade em tempo real e otimiza sua memória de longo prazo, resultando em um assistente virtual mais capaz, coerente e eficaz.
