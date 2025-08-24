@@ -11,6 +11,7 @@ import ToolExecutionOrchestrator from './orchestrators/toolExecutionOrchestrator
 import ErrorHandler from './handlers/errorHandler.js';
 import ContextAnalyzer from './handlers/contextAnalyzer.js';
 import BackgroundTaskManager from './handlers/backgroundTaskManager.js';
+import STMManager from '../core/memory/stmManager.js';
 
 // External dependencies
 import MessageAuthHandler from './processors/messageAuthHandler.js';
@@ -40,6 +41,9 @@ class MessageProcessor {
       ltmContext: null,
       messages: null,
       response: null,
+      sentiment: null,
+      interactionStyle: null,
+      situationType: null,
     };
   }
 
@@ -64,6 +68,7 @@ class MessageProcessor {
 
       this._initialize();
       await this._processUserData();
+      await this._manageShortTermMemory();
       await this._performAIAnalysis();
       const dynamicPrompt = this._buildPrompt();
       const { mcpExecutor, dynamicTools, handled } = await this._prepareAndGenerateResponse(dynamicPrompt);
@@ -110,28 +115,42 @@ class MessageProcessor {
   }
 
   /**
-   * Phase 4: AI Analysis
+   * Phase 4: Short-Term Memory Management
+   */
+  async _manageShortTermMemory() {
+    this.state.messages = await STMManager.manageSTM(this.state.messages);
+  }
+
+  /**
+   * Phase 5: AI Analysis
    */
   async _performAIAnalysis() {
-    // Note: returned values are not used later in the original code.
-    // If they were, we would store them in this.state.
-    await UserDataProcessor.performAIAnalysis(
-      this.state.userContent,
-      this.state.userId,
-      this.state.userProfile
-    );
+    // Perform parallel analysis for efficiency
+    const [analysisResult, situationType] = await Promise.all([
+      UserDataProcessor.performAIAnalysis(
+        this.state.userContent,
+        this.state.userId,
+        this.state.userProfile
+      ),
+      ContextAnalyzer.determineSituationalContext(this.state.userContent, this.state.messages)
+    ]);
+
+    this.state.sentiment = analysisResult.sentiment;
+    this.state.interactionStyle = analysisResult.interactionStyle;
+    this.state.situationType = situationType;
   }
 
   /**
    * Phase 6: Prompt Construction
    */
   _buildPrompt() {
-    // The original try/catch was redundant as it called the same fallback function.
-    // The ContextAnalyzer.determineSituationType was also not used.
     return AIResponseProcessor.createFallbackPrompt(
       this.state.userProfile,
       this.state.ltmContext,
-      this.state.imageAnalysisResult
+      this.state.imageAnalysisResult,
+      this.state.sentiment,
+      this.state.interactionStyle,
+      this.state.situationType,
     );
   }
 
@@ -139,15 +158,7 @@ class MessageProcessor {
    * Phase 7: AI Response Generation
    */
   async _prepareAndGenerateResponse(dynamicPrompt) {
-    // Patch: filter messages to keep context concise
-    const lastUserIndex = [...this.state.messages].reverse().findIndex(msg => msg.role === 'user');
-    let filteredMessages = this.state.messages;
-    if (lastUserIndex !== -1) {
-      const idx = this.state.messages.length - 1 - lastUserIndex;
-      filteredMessages = this.state.messages.slice(idx);
-    }
-
-    const sanitizedChatMessages = AIResponseProcessor.prepareChatMessages(dynamicPrompt, filteredMessages, this.state.userContent);
+    const sanitizedChatMessages = AIResponseProcessor.prepareChatMessages(dynamicPrompt, this.state.messages, this.state.userContent);
     const { mcpExecutor, dynamicTools } = await AIResponseProcessor.getAvailableTools();
 
     try {

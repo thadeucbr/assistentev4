@@ -1,116 +1,74 @@
+import { chatAi } from '../../config/ai/chat.ai.js';
 import logger from '../../utils/logger.js';
 
 /**
- * Analisador dedicado à determinação de contexto e situações
+ * Analisador de Contexto Situacional (Roteador de Intenção)
+ * Utiliza um modelo de linguagem para classificar a intenção do usuário
+ * e determinar o contexto da situação atual.
  */
 class ContextAnalyzer {
-  
   /**
-   * Determina o tipo de situação para personalização contextual
+   * Determina o tipo de situação contextual usando um LLM para classificação.
+   * @param {string} userContent - A mensagem mais recente do usuário.
+   * @param {Array} messageHistory - O histórico de mensagens da conversa.
+   * @returns {Promise<string|null>} - O tipo de situação (ex: 'complex_task') ou null.
    */
-  static determineSituationType(messages, userContent) {
-    logger.debug('ContextAnalyzer', 'Determinando tipo de situação', {
-      messagesCount: messages.length,
-      contentLength: userContent.length
-    });
+  static async determineSituationalContext(userContent, messageHistory) {
+    logger.debug('ContextAnalyzer', 'Determinando tipo de situação via LLM...');
 
-    // Primeira interação
-    if (messages.length === 0) {
-      logger.debug('ContextAnalyzer', 'Situação: primeira interação');
-      return 'first_interaction';
-    }
+    const history = messageHistory
+      .slice(-4) // Pega as últimas 4 mensagens para contexto
+      .map((msg) => `[${msg.role}]: ${typeof msg.content === 'string' ? msg.content.substring(0, 200) : '...'})`)
+      .join('\n');
 
-    // Tarefa criativa
-    const creativeKeywords = ['criar', 'gerar', 'desenhar', 'imagem', 'arte', 'criativo', 'inventar'];
-    if (creativeKeywords.some(keyword => userContent.toLowerCase().includes(keyword))) {
-      logger.debug('ContextAnalyzer', 'Situação: tarefa criativa');
-      return 'creative_task';
-    }
+    const prompt = `
+      Você é um "Roteador de Intenção" para uma IA. Sua única tarefa é analisar a ÚLTIMA mensagem do usuário e o histórico da conversa para classificar a intenção principal em uma das seguintes categorias. Responda APENAS com a categoria, em letras minúsculas e snake_case.
 
-    // Suporte emocional
-    const emotionalKeywords = ['triste', 'feliz', 'ansioso', 'preocupado', 'deprimido', 'estressado', 'ajuda', 'como você se sente'];
-    if (emotionalKeywords.some(keyword => userContent.toLowerCase().includes(keyword))) {
-      logger.debug('ContextAnalyzer', 'Situação: suporte emocional');
-      return 'emotional_support';
-    }
+      Categorias Válidas:
+      - 'greeting': Uma saudação simples ou conversa fiada inicial.
+      - 'simple_question': Uma pergunta direta que provavelmente pode ser respondida com uma única ferramenta ou conhecimento básico.
+      - 'complex_task': Um pedido que requer múltiplos passos, planejamento, ou o uso de várias ferramentas (ex: "planeje minha viagem", "escreva um roteiro").
+      - 'creative_request': Um pedido para gerar conteúdo criativo como uma imagem, um poema, uma história.
+      - 'error_recovery': O usuário está relatando um erro, expressando frustração com um problema anterior, ou o sistema precisa se corrigir.
+      - 'follow_up': O usuário está continuando um tópico da mensagem anterior, fazendo uma pergunta de acompanhamento.
+      - 'user_feedback': O usuário está fornecendo feedback sobre o assistente.
+      - 'chit_chat': Conversa casual, não relacionada a uma tarefa específica.
 
-    // Recuperação de erro
-    const errorKeywords = ['erro', 'problema', 'não funciona', 'bug', 'falha', 'ajuda urgente'];
-    if (errorKeywords.some(keyword => userContent.toLowerCase().includes(keyword))) {
-      logger.debug('ContextAnalyzer', 'Situação: recuperação de erro');
-      return 'error_recovery';
-    }
+      ---
+      Histórico Recente da Conversa:
+      ${history}
+      ---
+      ÚLTIMA MENSAGEM DO USUÁRIO:
+      "${userContent}"
+      ---
 
-    logger.debug('ContextAnalyzer', 'Situação: normal');
-    return null; // Situação normal
-  }
+      Com base na ÚLTIMA mensagem e no histórico, qual é a categoria da intenção? Responda APENAS com a categoria.
+    `;
 
-  /**
-   * Analisa o sentimento geral da conversa
-   */
-  static analyzeContinuousSentiment(messages) {
-    if (!messages || messages.length === 0) {
-      return 'neutral';
-    }
+    try {
+      const response = await chatAi(
+        [{ role: 'user', content: prompt }],
+        null, // Sem ferramentas para esta chamada
+        null, // Sem forçar ferramenta
+        0.1   // Baixa temperatura para classificação
+      );
 
-    const recentMessages = messages.slice(-5);
-    const positiveWords = ['obrigado', 'legal', 'ótimo', 'perfeito', 'adorei', 'excelente'];
-    const negativeWords = ['problema', 'erro', 'ruim', 'péssimo', 'odeio', 'irritado'];
+      const situationType = response.message?.content?.trim().toLowerCase() || 'unknown';
 
-    let positiveScore = 0;
-    let negativeScore = 0;
-
-    recentMessages.forEach(msg => {
-      if (msg.role === 'user' && msg.content) {
-        const content = msg.content.toLowerCase();
-        positiveWords.forEach(word => {
-          if (content.includes(word)) positiveScore++;
-        });
-        negativeWords.forEach(word => {
-          if (content.includes(word)) negativeScore++;
-        });
+      // Validação para garantir que a resposta está entre as categorias esperadas
+      const validCategories = ['greeting', 'simple_question', 'complex_task', 'creative_request', 'error_recovery', 'follow_up', 'user_feedback', 'chit_chat'];
+      if (validCategories.includes(situationType)) {
+        logger.milestone('ContextAnalyzer', `Situação determinada via LLM: ${situationType}`);
+        return situationType;
+      } else {
+        logger.warn('ContextAnalyzer', `LLM retornou uma categoria de situação inválida: "${situationType}". Usando 'simple_question' como padrão.`);
+        return 'simple_question'; // Fallback para uma situação comum
       }
-    });
-
-    if (positiveScore > negativeScore) return 'positive';
-    if (negativeScore > positiveScore) return 'negative';
-    return 'neutral';
-  }
-
-  /**
-   * Identifica padrões de comunicação do usuário
-   */
-  static identifyUserCommunicationPatterns(messages) {
-    if (!messages || messages.length < 3) {
-      return { isVerbose: false, isDirective: false, isCasual: true };
+    } catch (error) {
+      logger.error('ContextAnalyzer', `Erro ao determinar situação via LLM: ${error.message}`);
+      // Em caso de erro na chamada da IA, retorna null para não quebrar o fluxo.
+      return null;
     }
-
-    const userMessages = messages.filter(msg => msg.role === 'user');
-    
-    // Calcular verbosidade média
-    const avgMessageLength = userMessages.reduce((sum, msg) => sum + (msg.content?.length || 0), 0) / userMessages.length;
-    const isVerbose = avgMessageLength > 100;
-
-    // Detectar linguagem diretiva
-    const directivePatterns = ['faça', 'crie', 'gere', 'mostre', 'explique'];
-    const directiveCount = userMessages.filter(msg => 
-      directivePatterns.some(pattern => msg.content?.toLowerCase().includes(pattern))
-    ).length;
-    const isDirective = directiveCount > userMessages.length * 0.3;
-
-    // Detectar informalidade
-    const casualPatterns = ['oi', 'olá', 'beleza', 'valeu', 'show'];
-    const casualCount = userMessages.filter(msg => 
-      casualPatterns.some(pattern => msg.content?.toLowerCase().includes(pattern))
-    ).length;
-    const isCasual = casualCount > 0;
-
-    return {
-      isVerbose,
-      isDirective,
-      isCasual,
-      avgMessageLength
-    };
   }
 }
 

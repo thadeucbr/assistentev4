@@ -81,9 +81,9 @@ class AIResponseProcessor {
   /**
    * Cria prompt de fallback básico quando o sistema de personalidade falha
    */
-  static createFallbackPrompt(userProfile, ltmContext, imageAnalysisResult) {
-    logger.debug('AIResponseProcessor', 'Criando prompt de fallback básico');
-    return DynamicPromptBuilder.buildDynamicPrompt(userProfile, ltmContext, imageAnalysisResult);
+  static createFallbackPrompt(userProfile, ltmContext, imageAnalysisResult, sentiment, interactionStyle, situationType) {
+    logger.debug('AIResponseProcessor', 'Criando prompt dinâmico adaptativo');
+    return DynamicPromptBuilder.buildDynamicPrompt(userProfile, ltmContext, imageAnalysisResult, sentiment, interactionStyle, situationType);
   }
 
 }
