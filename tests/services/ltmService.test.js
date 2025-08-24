@@ -1,7 +1,7 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 
 // Use unstable_mockModule to mock ES modules
-jest.unstable_mockModule('../src/lib/vectorStore.js', () => ({
+jest.unstable_mockModule('../../src/lib/vectorStore.js', () => ({
   default: {
     similaritySearch: jest.fn(),
     addDocuments: jest.fn(),
@@ -9,8 +9,8 @@ jest.unstable_mockModule('../src/lib/vectorStore.js', () => ({
 }));
 
 // Dynamically import the modules after the mock is set up
-const { default: LtmService } = await import('../src/services/LtmService.js');
-const { default: InMemoryVectorStore } = await import('../src/lib/vectorStore.js');
+const { default: LtmService } = await import('../../src/services/LtmService.js');
+const { default: InMemoryVectorStore } = await import('../../src/lib/vectorStore.js');
 
 describe('LtmService', () => {
   const userId = 'test-user';

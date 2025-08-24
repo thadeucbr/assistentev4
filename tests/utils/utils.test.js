@@ -1,5 +1,5 @@
 import { describe, it, expect, jest } from '@jest/globals';
-import parseScheduledTime from '../src/utils/parseScheduledTime.js';
+import parseScheduledTime from '../../src/utils/parseScheduledTime.js';
 
 describe('parseScheduledTime', () => {
   // Teste para strings de data inválidas

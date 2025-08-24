@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import DynamicPromptBuilder from '../src/core/prompt/dynamicPromptBuilder.js';
+import DynamicPromptBuilder from '../../../src/core/prompt/dynamicPromptBuilder.js';
 
 describe('DynamicPromptBuilder', () => {
   const baseUserProfile = {

@@ -75,6 +75,7 @@ class ErrorHandler {
   static isRecoverableError(error) {
     const recoverablePatterns = [
       'Rate limit',
+      'timed out',
       'timeout',
       'ECONNRESET',
       'ETIMEDOUT',

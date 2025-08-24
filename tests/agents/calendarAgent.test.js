@@ -1,24 +1,24 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 
 // Mock dependencies
-jest.unstable_mockModule('../src/services/GoogleCalendarService.js', () => ({
+jest.unstable_mockModule('../../src/services/GoogleCalendarService.js', () => ({
   default: {
     createEvent: jest.fn(),
     listEvents: jest.fn(),
   },
 }));
-jest.unstable_mockModule('../src/services/ICalService.js', () => ({
+jest.unstable_mockModule('../../src/services/ICalService.js', () => ({
   default: {
     generateICalFile: jest.fn(),
   },
 }));
-jest.unstable_mockModule('../src/whatsapp/sendMessage.js', () => ({
+jest.unstable_mockModule('../../src/whatsapp/sendMessage.js', () => ({
   default: jest.fn(),
 }));
-jest.unstable_mockModule('../src/whatsapp/sendFile.js', () => ({
+jest.unstable_mockModule('../../src/whatsapp/sendFile.js', () => ({
   default: jest.fn(),
 }));
-jest.unstable_mockModule('../src/utils/logger.js', () => ({
+jest.unstable_mockModule('../../src/utils/logger.js', () => ({
   default: {
     info: jest.fn(),
     error: jest.fn(),
@@ -27,11 +27,11 @@ jest.unstable_mockModule('../src/utils/logger.js', () => ({
 }));
 
 // Dynamically import modules after mocks are set up
-const { default: CalendarAgent } = await import('../src/agents/CalendarAgent.js');
-const { default: GoogleCalendarService } = await import('../src/services/GoogleCalendarService.js');
-const { default: ICalService } = await import('../src/services/ICalService.js');
-const { default: sendMessage } = await import('../src/whatsapp/sendMessage.js');
-const { default: sendFile } = await import('../src/whatsapp/sendFile.js');
+const { default: CalendarAgent } = await import('../../src/agents/CalendarAgent.js');
+const { default: GoogleCalendarService } = await import('../../src/services/GoogleCalendarService.js');
+const { default: ICalService } = await import('../../src/services/ICalService.js');
+const { default: sendMessage } = await import('../../src/whatsapp/sendMessage.js');
+const { default: sendFile } = await import('../../src/whatsapp/sendFile.js');
 
 describe('CalendarAgent', () => {
   const userId = 'test-user';
