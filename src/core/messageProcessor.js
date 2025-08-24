@@ -12,6 +12,7 @@ import ErrorHandler from './handlers/errorHandler.js';
 import ContextAnalyzer from './handlers/contextAnalyzer.js';
 import BackgroundTaskManager from './handlers/backgroundTaskManager.js';
 import STMManager from '../core/memory/stmManager.js';
+import ContextDistiller from '../core/memory/contextDistiller.js';
 
 // External dependencies
 import MessageAuthHandler from './processors/messageAuthHandler.js';
@@ -195,11 +196,15 @@ class MessageProcessor {
   }
 
   /**
-   * Phase 9: Finalization
+   * Phase 9: Finalization and Context Distillation
    */
   async _finalize() {
-    await UserDataProcessor.saveUserContext(this.state.userId, this.state.messages);
+    // First, run background tasks that might need the full, non-distilled context
     BackgroundTaskManager.executeBackgroundTasks(this.state.userId, this.state.messages);
+
+    // Then, distill the context before saving it for the long term
+    const distilledMessages = await ContextDistiller.distill(this.state.messages);
+    await UserDataProcessor.saveUserContext(this.state.userId, distilledMessages);
   }
 }
 
