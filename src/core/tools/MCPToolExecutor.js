@@ -24,12 +24,12 @@ export default class MCPToolExecutor {
       logger.step('MCPToolExecutor', 'Consultando tools disponíveis no MCP');
       this.availableTools = await this.mcpClient.listTools();
       logger.timing('MCPToolExecutor', `${this.availableTools.length} tools encontradas no MCP`);
-      
+
       // Log das tools encontradas (apenas debug)
       this.availableTools.forEach(tool => {
         logger.debug('MCPToolExecutor', `Tool disponível: ${tool.name} - ${tool.description}`);
       });
-      
+
       return this.availableTools;
     } catch (error) {
       logger.critical('MCPToolExecutor', `Erro ao consultar tools do MCP: ${error.message}`);
@@ -43,7 +43,7 @@ export default class MCPToolExecutor {
    */
   async getToolsForOpenAI() {
     const mcpTools = await this.getAvailableTools();
-    
+
     return mcpTools.map(tool => ({
       type: 'function',
       function: {
@@ -72,7 +72,7 @@ export default class MCPToolExecutor {
    */
   async executeTools(messages, response, tools, from, messageId, userContent, messageData, imageAnalysisResult) {
     logger.milestone('MCPToolExecutor', 'Executando tools via MCP');
-    
+
     let newMessages = [...messages];
     const toolResponses = [];
     const respondedToolCallIds = new Set();
@@ -182,7 +182,7 @@ export default class MCPToolExecutor {
    * inspecionando o schema da ferramenta.
    */
   adaptArgsForMCP(tool, args, from, messageData) {
-  const adaptedArgs = { ...args };
+    const adaptedArgs = { ...args };
 
     if (!tool || !tool.inputSchema || !tool.inputSchema.properties) {
       return adaptedArgs;
@@ -201,6 +201,13 @@ export default class MCPToolExecutor {
     };
 
     for (const prop in schemaProperties) {
+      if (prop === 'userId') {
+        if (messageData?.sender) {
+          adaptedArgs.userId = messageData.sender.id;
+        } else {
+          adaptedArgs.userId = from;
+        }
+      }
       if (prop === 'to') {
         // Se 'to' existe, mas não contém @c.us ou @g.us, sobrescreve por 'from'
         if (
@@ -229,7 +236,7 @@ export default class MCPToolExecutor {
     if (tool.name === 'audio_generation') {
       adaptedArgs.sendAudio = true;
     }
-    
+
     if (tool.name === 'image_analysis' && messageData?.type === 'image' && messageData.id) {
       adaptedArgs.id = messageData.id;
     }
@@ -242,42 +249,42 @@ export default class MCPToolExecutor {
    */
   async executeWithRetry(toolName, mcpArgs, maxRetries = 2) {
     let lastError;
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         logger.debug('MCPToolExecutor', `🔄 Tentativa ${attempt}/${maxRetries} para "${toolName}"`);
         const result = await this.mcpClient.callTool(toolName, mcpArgs);
-        
+
         if (attempt > 1) {
           logger.milestone('MCPToolExecutor', `✅ "${toolName}" executada com sucesso na tentativa ${attempt}`);
         }
-        
+
         return result;
       } catch (error) {
         lastError = error;
         logger.warn('MCPToolExecutor', `⚠️ Tentativa ${attempt}/${maxRetries} falhou para "${toolName}": ${error.message}`);
-        
+
         // Se é erro de buffer overflow, não tentar novamente - é inútil
-        if (error.message.includes('maxBuffer length exceeded') || 
-            error.message.includes('stdout maxBuffer') || 
-            error.message.includes('Buffer overflow')) {
+        if (error.message.includes('maxBuffer length exceeded') ||
+          error.message.includes('stdout maxBuffer') ||
+          error.message.includes('Buffer overflow')) {
           logger.error('MCPToolExecutor', `🚫 Buffer overflow detectado para "${toolName}" - interrompendo tentativas`);
           throw new Error(`Buffer overflow: A resposta da ferramenta "${toolName}" é muito grande. Isso geralmente acontece com imagens em base64. A ferramenta deve ser otimizada para não retornar dados grandes.`);
         }
-        
+
         // Se é erro de timeout muito longo, não tentar novamente imediatamente
         if (error.message.includes('timeout') || error.message.includes('ETIMEDOUT')) {
           logger.error('MCPToolExecutor', `⏱️ Timeout detectado para "${toolName}" - interrompendo tentativas`);
           throw new Error(`Timeout: A ferramenta "${toolName}" demorou muito para responder.`);
         }
-        
+
         if (attempt < maxRetries) {
           // Aguardar antes da próxima tentativa
           await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
         }
       }
     }
-    
+
     throw lastError;
   }
 
@@ -286,29 +293,29 @@ export default class MCPToolExecutor {
    */
   createErrorMessage(toolName, error) {
     const errorMessage = error.message || 'Erro desconhecido';
-    
+
     if (errorMessage.includes('Rate limit')) {
       return `⏳ Temporariamente indisponível devido ao limite de uso da API. Tente novamente em alguns segundos.`;
     }
-    
+
     if (errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT')) {
       return `⏱️ A operação demorou mais que o esperado e foi cancelada. Tente uma consulta mais simples.`;
     }
-    
-    if (errorMessage.includes('maxBuffer length exceeded') || 
-        errorMessage.includes('stdout maxBuffer') || 
-        errorMessage.includes('Buffer overflow')) {
+
+    if (errorMessage.includes('maxBuffer length exceeded') ||
+      errorMessage.includes('stdout maxBuffer') ||
+      errorMessage.includes('Buffer overflow')) {
       return `📋 A resposta foi muito grande para ser processada. ${toolName === 'image_generation' ? 'A imagem foi processada diretamente.' : 'Tente uma operação mais simples.'}`;
     }
-    
+
     if (errorMessage.includes('Resposta válida não encontrada')) {
       return `🔧 Problema na comunicação interna. A operação será processada novamente automaticamente.`;
     }
-    
+
     if (toolName === 'image_generation' && errorMessage.includes('Cannot find module')) {
       return `🎨 Problema na configuração do gerador de imagens. Verifique se todos os módulos estão instalados.`;
     }
-    
+
     return `❌ Erro ao executar ${toolName}: ${errorMessage}`;
   }
 
@@ -321,11 +328,11 @@ export default class MCPToolExecutor {
     }
 
     const content = mcpResult.content[0];
-    
+
     if (content.type === 'text') {
       return content.text;
     }
-    
+
     return JSON.stringify(mcpResult, null, 2);
   }
 }
