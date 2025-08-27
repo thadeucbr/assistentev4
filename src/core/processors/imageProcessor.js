@@ -114,7 +114,7 @@ export default class ImageProcessor {
     const isGroup = data.from && data.from.includes('@g.us');
     
     if (!isGroup) {
-      return userContent; // Em conversas privadas não precisa identificar
+      return `[${data.from}](${data.notifyName}): ${userContent}`; // Em conversas privadas não precisa identificar
     }
     
     // Extrair nome do usuário
@@ -127,12 +127,6 @@ export default class ImageProcessor {
       userName = data.author.replace('@c.us', '');
     }
     
-    // Extrair ID do usuário (remover @g.us se for grupo)
-    let userId = data.from || '';
-    if (userId.includes('@g.us')) {
-      userId = userId.replace('@g.us', '');
-    }
-    
-    return `[${userName}] (${userId}): ${userContent}`;
+    return `[${data.from}](${userName}): ${userContent}`;
   }
 }
