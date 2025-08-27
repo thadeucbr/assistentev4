@@ -127,6 +127,12 @@ export default class ImageProcessor {
       userName = data.author.replace('@c.us', '');
     }
     
-    return `[${userName}]: ${userContent}`;
+    // Extrair ID do usuário (remover @g.us se for grupo)
+    let userId = data.from || '';
+    if (userId.includes('@g.us')) {
+      userId = userId.replace('@g.us', '');
+    }
+    
+    return `[${userName}] (${userId}): ${userContent}`;
   }
 }
